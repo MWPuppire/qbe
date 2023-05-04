@@ -3,6 +3,27 @@ use crate::{Result, QbeError};
 use crate::value::{QbeValue, QbeData, QbeType, QbeBasicType};
 use crate::func::{QbeFunctionBuilder, QbeFunctionParams};
 
+#[cfg(feature = "qbe-command")]
+pub enum QbeTarget {
+    Amd64,
+    Amd64Apple,
+    Arm64,
+    Arm64Apple,
+    RiscV64,
+}
+#[cfg(feature = "qbe-command")]
+impl QbeTarget {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Amd64 => "amd64_sysv",
+            Self::Amd64Apple => "amd64_apple",
+            Self::Arm64 => "arm64",
+            Self::Arm64Apple => "arm64_apple",
+            Self::RiscV64 => "rv64",
+        }
+    }
+}
+
 #[derive(Builder, Clone, Debug)]
 pub struct QbeGlobalOpts<'a> {
     #[builder(setter(strip_option), default)]
@@ -304,5 +325,24 @@ impl QbeContext {
 
     pub fn compile(self) -> String {
         self.compiled
+    }
+
+    #[cfg(feature = "qbe-command")]
+    pub fn into_assembly(self, target: QbeTarget) -> String {
+        use std::fs::File;
+        use std::process::Command;
+        use std::io::Write;
+        use tempfile::tempfile;
+        let mut f: File = tempfile().unwrap();
+        write!(f, "{}", self.compiled).unwrap();
+        String::from_utf8(
+            Command::new("qbe")
+                .arg("-t").arg(target.as_str())
+                .arg("-")
+                .stdin(f)
+                .output()
+                .unwrap()
+                .stdout
+            ).unwrap()
     }
 }

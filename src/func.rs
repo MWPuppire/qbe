@@ -1,6 +1,7 @@
 use std::fmt::{self, Write};
 use crate::{Result, QbeError};
 use crate::value::{QbeType, QbeValue, QbeLabel, QbeBasicType};
+use paste::paste;
 
 #[derive(Clone, Debug)]
 pub struct QbeFunctionParams<'a> {
@@ -29,6 +30,88 @@ impl fmt::Display for QbeFunctionParams<'_> {
         }
         Ok(())
     }
+}
+
+macro_rules! unop {
+    ($name:ident, $input:ident, $valid:ident, $outtype:expr) => {
+        paste! {
+            pub fn $name<T: for<'a> Into<QbeValue<'a>>>(&mut self, val: T) -> Result<QbeValue> {
+                let $input = val.into();
+                if !$input.type_of().[<is_ $valid>]() {
+                    return Err(QbeError::IncorrectType(stringify!(valid)));
+                }
+                let outtyp = $outtype.promote();
+                let id = self.local_counter;
+                writeln!(&mut self.compiled,
+                    concat!("%_{} ={} ", stringify!(name), " {}"),
+                    id, outtyp, $input)?;
+                self.local_counter += 1;
+                Ok(QbeValue::Temporary(outtyp, id))
+            }
+        }
+    };
+
+    ($name:ident, $input:ident, $valid:ident, $outtype:expr, $op:expr) => {
+        paste! {
+            pub fn $name<T: for<'a> Into<QbeValue<'a>>>(&mut self, val: T) -> Result<QbeValue> {
+                let $input = val.into();
+                if !$input.type_of().[<is_ $valid>]() {
+                    return Err(QbeError::IncorrectType(stringify!(valid)));
+                }
+                let outtyp = $outtype.promote();
+                let id = self.local_counter;
+                writeln!(&mut self.compiled, "%_{} ={} {}", id, outtyp, $op)?;
+                self.local_counter += 1;
+                Ok(QbeValue::Temporary(outtyp, id))
+            }
+        }
+    };
+}
+
+macro_rules! binop {
+    ($name:ident, $in1:ident, $in2:ident, $valid:ident, $outtype:expr) => {
+        paste! {
+            pub fn $name<X, Y>(&mut self, val1: X, val2: Y) -> Result<QbeValue>
+            where X: for<'a> Into<QbeValue<'a>>, Y: for<'a> Into<QbeValue<'a>> {
+                let $in1 = val1.into();
+                let $in2 = val2.into();
+                if !$in1.type_of().[<is_ $valid>]() {
+                    return Err(QbeError::IncorrectType(stringify!(valid)));
+                }
+                if !$in2.type_of().[<is_ $valid>]() {
+                    return Err(QbeError::IncorrectType(stringify!(valid)));
+                }
+                let outtyp = $outtype.promote();
+                let id = self.local_counter;
+                writeln!(&mut self.compiled,
+                    concat!("%_{} ={} ", stringify!(name), " {}, {}"),
+                    id, outtyp, $in1, $in2)?;
+                self.local_counter += 1;
+                Ok(QbeValue::Temporary(outtyp, id))
+            }
+        }
+    };
+
+    ($name:ident, $in1:ident, $in2:ident, $valid:ident, $outtype:expr, $op:expr) => {
+        paste! {
+            pub fn $name<X, Y>(&mut self, val1: X, val2: Y) -> Result<QbeValue>
+            where X: for<'a> Into<QbeValue<'a>>, Y: for<'a> Into<QbeValue<'a>> {
+                let $in1 = val1.into();
+                let $in2 = val2.into();
+                if !$in1.type_of().[<is_ $valid>]() {
+                    return Err(QbeError::IncorrectType(stringify!(valid)));
+                }
+                if !$in2.type_of().[<is_ $valid>]() {
+                    return Err(QbeError::IncorrectType(stringify!(valid)));
+                }
+                let outtyp = $outtype.promote();
+                let id = self.local_counter;
+                writeln!(&mut self.compiled, "%_{} ={} {}", id, outtyp, $op)?;
+                self.local_counter += 1;
+                Ok(QbeValue::Temporary(outtyp, id))
+            }
+        }
+    };
 }
 
 #[derive(Clone, Debug)]
@@ -250,49 +333,32 @@ impl QbeFunctionBuilder {
     }
 
     // arithmetic instructions
+    binop!{add, x, y, numeric, x.type_of().common_type(&y.type_of())?}
+    binop!{sub, x, y, numeric, x.type_of().common_type(&y.type_of())?}
+    binop!{div, x, y, numeric, x.type_of().common_type(&y.type_of())?}
+    binop!{mul, x, y, numeric, x.type_of().common_type(&y.type_of())?}
+    unop!{neg, val, numeric, val.type_of()}
+    binop!{udiv, x, y, integer, x.type_of().common_type(&y.type_of())?}
+    binop!{rem, x, y, integer, x.type_of().common_type(&y.type_of())?}
+    binop!{urem, x, y, integer, x.type_of().common_type(&y.type_of())?}
+    binop!{or, x, y, integer, x.type_of().common_type(&y.type_of())?}
+    binop!{xor, x, y, integer, x.type_of().common_type(&y.type_of())?}
+    binop!{and, x, y, integer, x.type_of().common_type(&y.type_of())?}
+    binop!{sar, x, y, integer, x.type_of()}
+    binop!{shr, x, y, integer, x.type_of()}
+    binop!{shl, x, y, integer, x.type_of()}
 
     // comparison instructions
 
     // conversion instructions
+    unop!{extsw, val, integer, QbeType::Long}
+    unop!{extuw, val, integer, QbeType::Long}
+    unop!{exts, val, floating, QbeType::Double}
+    unop!{truncd, val, floating, QbeType::Single}
 
     // copy and cast
-    pub fn copy<T: for<'a> Into<QbeValue<'a>>>(&mut self, val: T) -> Result<QbeValue> {
-        let val = val.into();
-        let id = self.local_counter;
-        let typ = val.type_of().promote().pointer_ud();
-        writeln!(&mut self.compiled, "%_{} ={} copy {}", id, typ, val)?;
-        self.local_counter += 1;
-        Ok(QbeValue::Temporary(typ, id))
-    }
-    pub fn cast<T: for<'a> Into<QbeValue<'a>>>(&mut self, val: T) -> Result<QbeValue> {
-        let val = val.into();
-        let typ = val.type_of();
-        if !typ.is_numeric() {
-            return Err(QbeError::IncorrectType("numeric"));
-        }
-        let id = self.local_counter;
-        let typ = match typ.promote() {
-            QbeType::Word => {
-                writeln!(&mut self.compiled, "%_{} =s cast {}", id, val)?;
-                QbeType::Single
-            },
-            QbeType::Long => {
-                writeln!(&mut self.compiled, "%_{} =d cast {}", id, val)?;
-                QbeType::Double
-            },
-            QbeType::Single => {
-                writeln!(&mut self.compiled, "%_{} =w cast {}", id, val)?;
-                QbeType::Word
-            },
-            QbeType::Double => {
-                writeln!(&mut self.compiled, "%_{} =l cast {}", id, val)?;
-                QbeType::Long
-            },
-            _ => unreachable!(),
-        };
-        self.local_counter += 1;
-        Ok(QbeValue::Temporary(typ, id))
-    }
+    unop!{copy, val, any, val.type_of()}
+    unop!{cast, val, numeric, val.type_of().promote().cast()}
 
     // memory instructions
     pub fn store<X, Y>(&mut self, val: X, to: Y) -> Result<()>
@@ -377,36 +443,9 @@ impl QbeFunctionBuilder {
         writeln!(&mut self.compiled, "blit {} {} {}", src, dst, size)?;
         Ok(())
     }
-    pub fn alloc4<T: for<'a> Into<QbeValue<'a>>>(&mut self, size: T) -> Result<QbeValue> {
-        let size = size.into();
-        if !size.type_of().is_integer() {
-            return Err(QbeError::IncorrectType("integer"));
-        }
-        let id = self.local_counter;
-        writeln!(&mut self.compiled, "%_{} =l alloc4 {}", id, size)?;
-        self.local_counter += 1;
-        Ok(QbeValue::Temporary(QbeType::Long, id))
-    }
-    pub fn alloc8<T: for<'a> Into<QbeValue<'a>>>(&mut self, size: T) -> Result<QbeValue> {
-        let size = size.into();
-        if !size.type_of().is_integer() {
-            return Err(QbeError::IncorrectType("integer"));
-        }
-        let id = self.local_counter;
-        writeln!(&mut self.compiled, "%_{} =l alloc8 {}", id, size)?;
-        self.local_counter += 1;
-        Ok(QbeValue::Temporary(QbeType::Long, id))
-    }
-    pub fn alloc16<T: for<'a> Into<QbeValue<'a>>>(&mut self, size: T) -> Result<QbeValue> {
-        let size = size.into();
-        if !size.type_of().is_integer() {
-            return Err(QbeError::IncorrectType("integer"));
-        }
-        let id = self.local_counter;
-        writeln!(&mut self.compiled, "%_{} =l alloc16 {}", id, size)?;
-        self.local_counter += 1;
-        Ok(QbeValue::Temporary(QbeType::Long, id))
-    }
+    unop!{alloc4, val, integer, QbeType::Long}
+    unop!{alloc8, val, integer, QbeType::Long}
+    unop!{alloc16, val, integer, QbeType::Long}
 
     // jumps
     pub fn jmp(&mut self, to: QbeLabel) -> Result<()> {

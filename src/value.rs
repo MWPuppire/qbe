@@ -1,4 +1,5 @@
 use std::fmt;
+use crate::{Result, QbeError};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QbeBasicType {
@@ -59,17 +60,29 @@ impl QbeType {
             x => *x,
         }
     }
-    pub fn common_type(&self, with: &QbeType) -> Option<QbeType> {
+    pub(crate) fn cast(&self) -> QbeType {
+        match self {
+            Self::Word => Self::Single,
+            Self::Long => Self::Double,
+            Self::Single => Self::Word,
+            Self::Double => Self::Long,
+            x => *x,
+        }
+    }
+    pub fn common_type(&self, with: &QbeType) -> Result<QbeType> {
         let this = self.promote();
         let with = with.promote();
         if this == with {
-            return Some(this);
+            return Ok(this);
         }
         match (this, with) {
-            (Self::Word, Self::Long) => Some(Self::Word),
-            (Self::Long, Self::Word) => Some(Self::Word),
-            _ => None,
+            (Self::Word, Self::Long) => Ok(Self::Word),
+            (Self::Long, Self::Word) => Ok(Self::Word),
+            _ => Err(QbeError::CannotInferType),
         }
+    }
+    pub const fn is_any(&self) -> bool {
+        true
     }
     pub fn is_integer(&self) -> bool {
         match self {
@@ -318,5 +331,10 @@ impl From<f32> for QbeValue<'_> {
 impl From<f64> for QbeValue<'_> {
     fn from(item: f64) -> Self {
         Self::Constant(QbeType::Long, item.to_bits())
+    }
+}
+impl<'a> From<&'a str> for QbeValue<'a> {
+    fn from(item: &'a str) -> Self {
+        Self::Named(item)
     }
 }
