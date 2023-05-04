@@ -33,6 +33,8 @@ pub enum QbeError {
     CannotInferType,
     #[error("cannot call anything other than a global symbol")]
     NonGlobalCall,
+    #[error("cannot use `vastart` and `vaarg` outside a variadic function")]
+    NonVariadic
 }
 
 pub type Result<T> = std::result::Result<T, QbeError>;

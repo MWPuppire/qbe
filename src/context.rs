@@ -234,7 +234,7 @@ impl QbeContext {
         writeln!(&mut self.compiled, "}}")?;
         Ok(QbeValue::Global(id))
     }
-    pub fn function_ext<F: FnOnce(&mut QbeFunctionBuilder) -> Result<()>>(&mut self, params: &QbeFunctionParams, ret: Option<QbeType>, opts: &QbeGlobalOpts, builder: F) -> Result<QbeValue >{
+    pub fn function_ext<F: FnOnce(&mut QbeFunctionBuilder) -> Result<()>>(&mut self, params: &QbeFunctionParams, ret: Option<QbeType>, opts: &QbeGlobalOpts, builder: F) -> Result<QbeValue> {
         let mut f = QbeFunctionBuilder::new(params, ret);
         builder(&mut f)?;
         if opts.thread_local {
@@ -269,7 +269,7 @@ impl QbeContext {
         writeln!(&mut self.compiled, "}}")?;
         Ok(out_value)
     }
-    pub fn function_at_ext<F: FnOnce(&mut QbeFunctionBuilder) -> Result<()>>(&mut self, at: QbeValue, params: &QbeFunctionParams, ret: Option<QbeType>, opts: &QbeGlobalOpts, builder: F) -> Result<QbeValue >{
+    pub fn function_at_ext<F: FnOnce(&mut QbeFunctionBuilder) -> Result<()>>(&mut self, at: QbeValue, params: &QbeFunctionParams, ret: Option<QbeType>, opts: &QbeGlobalOpts, builder: F) -> Result<QbeValue> {
         let id = match at {
             QbeValue::ForwardDeclare(id) => id,
             _ => return Err(QbeError::AlreadyDefined),
