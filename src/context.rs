@@ -25,7 +25,7 @@ impl QbeTarget {
 }
 
 #[derive(Builder, Clone, Debug)]
-pub struct QbeGlobalOpts<'a> {
+pub struct QbeDecl<'a> {
     #[builder(setter(strip_option), default)]
     section: Option<&'a str>,
     #[builder(setter(strip_option), default)]
@@ -68,7 +68,7 @@ impl QbeContext {
         writeln!(&mut self.compiled, "data $_{} = {{ {} }}", id, data)?;
         Ok(QbeValue::Global(id))
     }
-    pub fn global_ext<T: for<'a> Into<QbeData<'a>>>(&mut self, val: T, opts: &QbeGlobalOpts) -> Result<QbeValue> {
+    pub fn global_ext<T: for<'a> Into<QbeData<'a>>>(&mut self, val: T, opts: &QbeDecl) -> Result<QbeValue> {
         let data = val.into();
         if opts.thread_local {
             writeln!(&mut self.compiled, "thread")?;
@@ -78,6 +78,7 @@ impl QbeContext {
             writeln!(&mut self.compiled, "section {} {}", sec, flags)?;
         }
         if let Some(name) = opts.export_as {
+            writeln!(&mut self.compiled, "export")?;
             let start = self.names.len();
             self.names.push('$');
             self.names.push_str(name);
@@ -87,7 +88,7 @@ impl QbeContext {
             } else {
                 writeln!(&mut self.compiled, "data {} = {{ {} }}", slice, data)?;
             }
-            Ok(QbeValue::Named(slice))
+            Ok(QbeValue::Named(unsafe { std::mem::transmute(slice) }))
         } else {
             let id = self.global_counter;
             if let Some(align) = opts.align_to {
@@ -99,7 +100,7 @@ impl QbeContext {
             Ok(QbeValue::Global(id))
         }
     }
-    pub fn global_at_ext<T: for<'a> Into<QbeData<'a>>>(&mut self, at: QbeValue, val: T, opts: &QbeGlobalOpts) -> Result<QbeValue> {
+    pub fn global_at_ext<T: for<'a> Into<QbeData<'a>>>(&mut self, at: QbeValue, val: T, opts: &QbeDecl) -> Result<QbeValue> {
         let id = match at {
             QbeValue::ForwardDeclare(id) => id,
             _ => return Err(QbeError::AlreadyDefined),
@@ -136,7 +137,7 @@ impl QbeContext {
         writeln!(&mut self.compiled, "data $_{} = {{ z {} }}", id, size)?;
         Ok(QbeValue::Global(id))
     }
-    pub fn global_zeroed_ext(&mut self, size: u64, opts: &QbeGlobalOpts) -> Result<QbeValue> {
+    pub fn global_zeroed_ext(&mut self, size: u64, opts: &QbeDecl) -> Result<QbeValue> {
         if opts.thread_local {
             writeln!(&mut self.compiled, "thread")?;
         }
@@ -145,6 +146,7 @@ impl QbeContext {
             writeln!(&mut self.compiled, "section {} {}", sec, flags)?;
         }
         if let Some(name) = opts.export_as {
+            writeln!(&mut self.compiled, "export")?;
             let start = self.names.len();
             self.names.push('$');
             self.names.push_str(name);
@@ -154,7 +156,7 @@ impl QbeContext {
             } else {
                 writeln!(&mut self.compiled, "data {} = {{ z {} }}", slice, size)?;
             }
-            Ok(QbeValue::Named(slice))
+            Ok(QbeValue::Named(unsafe { std::mem::transmute(slice) }))
         } else {
             let id = self.global_counter;
             if let Some(align) = opts.align_to {
@@ -166,7 +168,7 @@ impl QbeContext {
             Ok(QbeValue::Global(id))
         }
     }
-    pub fn global_zeroed_at_ext(&mut self, at: QbeValue, size: u64, opts: &QbeGlobalOpts) -> Result<QbeValue> {
+    pub fn global_zeroed_at_ext(&mut self, at: QbeValue, size: u64, opts: &QbeDecl) -> Result<QbeValue> {
         let id = match at {
             QbeValue::ForwardDeclare(id) => id,
             _ => return Err(QbeError::AlreadyDefined),
@@ -193,7 +195,7 @@ impl QbeContext {
         self.names.push('$');
         self.names.push_str(sym);
         let slice = &self.names[start..self.names.len()];
-        Ok(QbeValue::Named(slice))
+        Ok(QbeValue::Named(unsafe { std::mem::transmute(slice) }))
     }
 
     // type definitions
@@ -234,7 +236,7 @@ impl QbeContext {
         } else {
             writeln!(&mut self.compiled, "function $_{} ({}) {{", id, params)?;
         }
-        writeln!(&mut self.compiled, "{}", f.compile())?;
+        writeln!(&mut self.compiled, "{}", f.compile()?)?;
         writeln!(&mut self.compiled, "}}")?;
         self.global_counter += 1;
         Ok(QbeValue::Global(id))
@@ -251,11 +253,11 @@ impl QbeContext {
         } else {
             writeln!(&mut self.compiled, "function $_{} ({}) {{", id, params)?;
         }
-        writeln!(&mut self.compiled, "{}", f.compile())?;
+        writeln!(&mut self.compiled, "{}", f.compile()?)?;
         writeln!(&mut self.compiled, "}}")?;
         Ok(QbeValue::Global(id))
     }
-    pub fn function_ext<F: FnOnce(&mut QbeFunctionBuilder) -> Result<()>>(&mut self, params: &QbeFunctionParams, ret: Option<QbeType>, opts: &QbeGlobalOpts, builder: F) -> Result<QbeValue> {
+    pub fn function_ext<F: FnOnce(&mut QbeFunctionBuilder) -> Result<()>>(&mut self, params: &QbeFunctionParams, ret: Option<QbeType>, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
         let mut f = QbeFunctionBuilder::new(params, ret);
         builder(&mut f)?;
         if opts.thread_local {
@@ -266,6 +268,7 @@ impl QbeContext {
             writeln!(&mut self.compiled, "section {} {}", sec, flags)?;
         }
         let out_value = if let Some(name) = opts.export_as {
+            writeln!(&mut self.compiled, "export")?;
             let start = self.names.len();
             self.names.push('$');
             self.names.push_str(name);
@@ -275,7 +278,7 @@ impl QbeContext {
             } else {
                 writeln!(&mut self.compiled, "function {} ({}) {{", slice, params)?;
             }
-            QbeValue::Named(slice)
+            QbeValue::Named(unsafe { std::mem::transmute(slice) })
         } else {
             let id = self.global_counter;
             if let Some(ret) = ret {
@@ -286,11 +289,11 @@ impl QbeContext {
             self.global_counter += 1;
             QbeValue::Global(id)
         };
-        writeln!(&mut self.compiled, "{}", f.compile())?;
+        writeln!(&mut self.compiled, "{}", f.compile()?)?;
         writeln!(&mut self.compiled, "}}")?;
         Ok(out_value)
     }
-    pub fn function_at_ext<F: FnOnce(&mut QbeFunctionBuilder) -> Result<()>>(&mut self, at: QbeValue, params: &QbeFunctionParams, ret: Option<QbeType>, opts: &QbeGlobalOpts, builder: F) -> Result<QbeValue> {
+    pub fn function_at_ext<F: FnOnce(&mut QbeFunctionBuilder) -> Result<()>>(&mut self, at: QbeValue, params: &QbeFunctionParams, ret: Option<QbeType>, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
         let id = match at {
             QbeValue::ForwardDeclare(id) => id,
             _ => return Err(QbeError::AlreadyDefined),
@@ -312,7 +315,7 @@ impl QbeContext {
         } else {
             writeln!(&mut self.compiled, "function $_{} ({}) {{", id, params)?;
         }
-        writeln!(&mut self.compiled, "{}", f.compile())?;
+        writeln!(&mut self.compiled, "{}", f.compile()?)?;
         writeln!(&mut self.compiled, "}}")?;
         Ok(QbeValue::Global(id))
     }

@@ -9,7 +9,7 @@ mod context;
 
 pub use value::*;
 pub use func::*;
-pub use context::QbeContext;
+pub use context::{QbeContext, QbeDeclBuilder};
 
 #[derive(Error, Debug)]
 pub enum QbeError {
@@ -35,6 +35,12 @@ pub enum QbeError {
     NonGlobalCall,
     #[error("cannot use `vastart` and `vaarg` outside a variadic function")]
     NonVariadic,
+    #[error("cannot reassign to anything other than a local variable")]
+    NonLocalRedefinition,
+    #[error("reassignment must use only a single expression returning a local")]
+    ReassignmentSingleExpr,
+    #[error("no return found in a function with a return type")]
+    NoReturn,
 }
 
 pub type Result<T> = std::result::Result<T, QbeError>;

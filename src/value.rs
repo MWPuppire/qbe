@@ -69,19 +69,19 @@ impl QbeType {
             x => *x,
         }
     }
-    pub fn common_type(&self, with: &QbeType) -> Result<QbeType> {
-        let this = self.promote();
-        let with = with.promote();
-        if this == with {
-            return Ok(this);
-        }
-        match (this, with) {
-            (Self::Word, Self::Long) => Ok(Self::Word),
-            (Self::Long, Self::Word) => Ok(Self::Word),
-            _ => Err(QbeError::CannotInferType),
-        }
+    pub(crate) fn is_word(&self) -> bool {
+        *self == Self::Word
     }
-    pub const fn is_any(&self) -> bool {
+    pub(crate) fn is_long(&self) -> bool {
+        *self == Self::Long
+    }
+    pub(crate) fn is_single(&self) -> bool {
+        *self == Self::Single
+    }
+    pub(crate) fn is_double(&self) -> bool {
+        *self == Self::Double
+    }
+    pub(crate) const fn is_any(&self) -> bool {
         true
     }
     pub fn is_integer(&self) -> bool {
@@ -217,8 +217,8 @@ impl<'a> From<&'a str> for QbeData<'a> {
         Self::String(item)
     }
 }
-impl<'a> From<QbeValue<'a>> for QbeData<'a> {
-    fn from(item: QbeValue<'a>) -> Self {
+impl From<QbeValue> for QbeData<'_> {
+    fn from(item: QbeValue) -> Self {
         match item {
             QbeValue::Global(id)         => Self::Global(id),
             QbeValue::Named(name)        => Self::Named(name),
@@ -229,24 +229,32 @@ impl<'a> From<QbeValue<'a>> for QbeData<'a> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct QbeLabel(pub(crate) u32);
+pub enum QbeLabel {
+    Start,
+    Actual(u32),
+    ForwardDeclare(u32),
+}
 impl fmt::Display for QbeLabel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "@_{}", self.0)
+        match self {
+            Self::Start             => write!(f, "@start"),
+            Self::Actual(x)         => write!(f, "@_{}", x),
+            Self::ForwardDeclare(x) => write!(f, "@_{}", x),
+        }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum QbeValue<'a> {
+pub enum QbeValue {
     Global(u32),
     Temporary(QbeType, u32),
     Constant(QbeType, u64),
-    Named(&'a str),
+    Named(&'static str),
     // for ease of design, a forward declaration cannot use `export_as`
     // if this is desired, use a global named symbol instead
     ForwardDeclare(u32),
 }
-impl QbeValue<'_> {
+impl QbeValue {
     pub fn type_of(&self) -> QbeType {
         match self {
             Self::Global(_)         => QbeType::Long,
@@ -254,6 +262,30 @@ impl QbeValue<'_> {
             Self::Constant(typ, _)  => *typ,
             Self::Named(_)          => QbeType::Long,
             Self::ForwardDeclare(_) => QbeType::Long,
+        }
+    }
+    pub fn common_type(&self, with: &QbeValue) -> Result<QbeType> {
+        let typ = match self {
+            Self::Global(_)         => QbeType::Long,
+            Self::Temporary(typ, _) => *typ,
+            Self::Constant(_, _)    => return Ok(with.type_of()),
+            Self::Named(_)          => QbeType::Long,
+            Self::ForwardDeclare(_) => QbeType::Long,
+        }.promote();
+        let other = match with {
+            Self::Global(_)         => QbeType::Long,
+            Self::Temporary(typ, _) => *typ,
+            Self::Constant(_, _)    => return Ok(typ),
+            Self::Named(_)          => QbeType::Long,
+            Self::ForwardDeclare(_) => QbeType::Long,
+        }.promote();
+        if typ == other {
+            return Ok(typ);
+        }
+        match (typ, other) {
+            (QbeType::Word, QbeType::Long) => Ok(QbeType::Word),
+            (QbeType::Long, QbeType::Word) => Ok(QbeType::Word),
+            _ => Err(QbeError::CannotInferType),
         }
     }
     pub(crate) fn is_global(&self) -> bool {
@@ -268,7 +300,7 @@ impl QbeValue<'_> {
         }
     }
 }
-impl fmt::Display for QbeValue<'_> {
+impl fmt::Display for QbeValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Global(id)         => write!(f, "$_{}", id),
@@ -279,62 +311,62 @@ impl fmt::Display for QbeValue<'_> {
         }
     }
 }
-impl From<u8> for QbeValue<'_> {
+impl From<u8> for QbeValue {
     fn from(item: u8) -> Self {
         // automatic promotion from byte to word
         Self::Constant(QbeType::Word, item as u64)
     }
 }
-impl From<u16> for QbeValue<'_> {
+impl From<u16> for QbeValue {
     fn from(item: u16) -> Self {
         // automatic promotion from half to word
         Self::Constant(QbeType::Word, item as u64)
     }
 }
-impl From<u32> for QbeValue<'_> {
+impl From<u32> for QbeValue {
     fn from(item: u32) -> Self {
         Self::Constant(QbeType::Word, item as u64)
     }
 }
-impl From<u64> for QbeValue<'_> {
+impl From<u64> for QbeValue {
     fn from(item: u64) -> Self {
         Self::Constant(QbeType::Long, item)
     }
 }
-impl From<i8> for QbeValue<'_> {
+impl From<i8> for QbeValue {
     fn from(item: i8) -> Self {
         // automatic promotion from byte to word
         Self::Constant(QbeType::Word, item as u64)
     }
 }
-impl From<i16> for QbeValue<'_> {
+impl From<i16> for QbeValue {
     fn from(item: i16) -> Self {
         // automatic promotion from half to word
         Self::Constant(QbeType::Word, item as u64)
     }
 }
-impl From<i32> for QbeValue<'_> {
+impl From<i32> for QbeValue {
     fn from(item: i32) -> Self {
         Self::Constant(QbeType::Word, item as u64)
     }
 }
-impl From<i64> for QbeValue<'_> {
+impl From<i64> for QbeValue {
     fn from(item: i64) -> Self {
         Self::Constant(QbeType::Long, item as u64)
     }
 }
-impl From<f32> for QbeValue<'_> {
+impl From<f32> for QbeValue {
     fn from(item: f32) -> Self {
-        Self::Constant(QbeType::Word, item.to_bits() as u64)
+        Self::Constant(QbeType::Single, item.to_bits() as u64)
     }
 }
-impl From<f64> for QbeValue<'_> {
+impl From<f64> for QbeValue {
     fn from(item: f64) -> Self {
-        Self::Constant(QbeType::Long, item.to_bits())
+        Self::Constant(QbeType::Double, item.to_bits())
     }
 }
-impl<'a> From<&'a str> for QbeValue<'a> {
-    fn from(item: &'a str) -> Self {
+impl From<&'static str> for QbeValue {
+    fn from(item: &'static str) -> Self {
         Self::Named(item)
     }
 }
