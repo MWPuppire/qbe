@@ -25,8 +25,6 @@ pub enum QbeError {
     ArgumentOutOfBounds,
     #[error("this function doesn't have an env argument")]
     NoEnvArgument,
-    #[error("cannot redefine a value with `function_at` or `global_at`")]
-    AlreadyDefined,
     #[error("cannot use `export_as` with a forward declaration")]
     ForwardDeclareName,
     #[error("cannot infer a common type")]
@@ -41,6 +39,8 @@ pub enum QbeError {
     ReassignmentSingleExpr,
     #[error("no return found in a function with a return type")]
     NoReturn,
+    #[error("cannot use a user-defined type in that context")]
+    NotBasic,
 }
 
 pub type Result<T> = std::result::Result<T, QbeError>;

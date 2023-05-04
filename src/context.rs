@@ -1,6 +1,6 @@
 use std::fmt::Write;
 use crate::{Result, QbeError};
-use crate::value::{QbeValue, QbeData, QbeType, QbeBasicType};
+use crate::value::{QbeValue, QbeData, QbeType, QbeBasicType, QbeForwardDecl};
 use crate::func::{QbeFunctionBuilder, QbeFunctionParams};
 
 #[cfg(feature = "qbe-command")]
@@ -59,12 +59,9 @@ impl QbeContext {
         self.global_counter += 1;
         Ok(QbeValue::Global(id))
     }
-    pub fn global_at<T: for<'a> Into<QbeData<'a>>>(&mut self, at: QbeValue, val: T) -> Result<QbeValue> {
+    pub fn global_at<T: for<'a> Into<QbeData<'a>>>(&mut self, at: QbeForwardDecl, val: T) -> Result<QbeValue> {
         let data = val.into();
-        let id = match at {
-            QbeValue::ForwardDeclare(id) => id,
-            _ => return Err(QbeError::AlreadyDefined),
-        };
+        let id = at.0;
         writeln!(&mut self.compiled, "data $_{} = {{ {} }}", id, data)?;
         Ok(QbeValue::Global(id))
     }
@@ -100,15 +97,12 @@ impl QbeContext {
             Ok(QbeValue::Global(id))
         }
     }
-    pub fn global_at_ext<T: for<'a> Into<QbeData<'a>>>(&mut self, at: QbeValue, val: T, opts: &QbeDecl) -> Result<QbeValue> {
-        let id = match at {
-            QbeValue::ForwardDeclare(id) => id,
-            _ => return Err(QbeError::AlreadyDefined),
-        };
+    pub fn global_at_ext<T: for<'a> Into<QbeData<'a>>>(&mut self, at: QbeForwardDecl, val: T, opts: &QbeDecl) -> Result<QbeValue> {
+        let data = val.into();
+        let id = at.0;
         if opts.export_as.is_some() {
             return Err(QbeError::ForwardDeclareName);
         }
-        let data = val.into();
         if opts.thread_local {
             writeln!(&mut self.compiled, "thread")?;
         }
@@ -129,11 +123,8 @@ impl QbeContext {
         self.global_counter += 1;
         Ok(QbeValue::Global(id))
     }
-    pub fn global_zeroed_at(&mut self, at: QbeValue, size: u64) -> Result<QbeValue> {
-        let id = match at {
-            QbeValue::ForwardDeclare(id) => id,
-            _ => return Err(QbeError::AlreadyDefined),
-        };
+    pub fn global_zeroed_at(&mut self, at: QbeForwardDecl, size: u64) -> Result<QbeValue> {
+        let id = at.0;
         writeln!(&mut self.compiled, "data $_{} = {{ z {} }}", id, size)?;
         Ok(QbeValue::Global(id))
     }
@@ -168,11 +159,8 @@ impl QbeContext {
             Ok(QbeValue::Global(id))
         }
     }
-    pub fn global_zeroed_at_ext(&mut self, at: QbeValue, size: u64, opts: &QbeDecl) -> Result<QbeValue> {
-        let id = match at {
-            QbeValue::ForwardDeclare(id) => id,
-            _ => return Err(QbeError::AlreadyDefined),
-        };
+    pub fn global_zeroed_at_ext(&mut self, at: QbeForwardDecl, size: u64, opts: &QbeDecl) -> Result<QbeValue> {
+        let id = at.0;
         if opts.export_as.is_some() {
             return Err(QbeError::ForwardDeclareName);
         }
@@ -205,20 +193,22 @@ impl QbeContext {
         self.type_counter += 1;
         Ok(QbeType::UserDefined(id))
     }
-    pub fn struct_type(&mut self, members: &[QbeBasicType]) -> Result<QbeType> {
+    pub fn struct_type(&mut self, members: &[QbeType]) -> Result<QbeType> {
         let id = self.type_counter;
         write!(&mut self.compiled, "type :_{} = {{", id)?;
         for memb in members {
+            let memb: QbeBasicType = (*memb).try_into()?;
             write!(&mut self.compiled, "{}, ", memb)?;
         }
         writeln!(&mut self.compiled, "}}")?;
         self.type_counter += 1;
         Ok(QbeType::UserDefined(id))
     }
-    pub fn struct_type_align(&mut self, members: &[QbeBasicType], align: u64) -> Result<QbeType> {
+    pub fn struct_type_align(&mut self, members: &[QbeType], align: u64) -> Result<QbeType> {
         let id = self.type_counter;
         write!(&mut self.compiled, "type :_{} = align {} {{", id, align)?;
         for memb in members {
+            let memb: QbeBasicType = (*memb).try_into()?;
             write!(&mut self.compiled, "{}, ", memb)?;
         }
         writeln!(&mut self.compiled, "}}")?;
@@ -241,11 +231,8 @@ impl QbeContext {
         self.global_counter += 1;
         Ok(QbeValue::Global(id))
     }
-    pub fn function_at<F: FnOnce(&mut QbeFunctionBuilder) -> Result<()>>(&mut self, at: QbeValue, params: &QbeFunctionParams, ret: Option<QbeType>, builder: F) -> Result<QbeValue> {
-        let id = match at {
-            QbeValue::ForwardDeclare(id) => id,
-            _ => return Err(QbeError::AlreadyDefined),
-        };
+    pub fn function_at<F: FnOnce(&mut QbeFunctionBuilder) -> Result<()>>(&mut self, at: QbeForwardDecl, params: &QbeFunctionParams, ret: Option<QbeType>, builder: F) -> Result<QbeValue> {
+        let id = at.0;
         let mut f = QbeFunctionBuilder::new(params, ret);
         builder(&mut f)?;
         if let Some(ret) = ret {
@@ -293,11 +280,8 @@ impl QbeContext {
         writeln!(&mut self.compiled, "}}")?;
         Ok(out_value)
     }
-    pub fn function_at_ext<F: FnOnce(&mut QbeFunctionBuilder) -> Result<()>>(&mut self, at: QbeValue, params: &QbeFunctionParams, ret: Option<QbeType>, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
-        let id = match at {
-            QbeValue::ForwardDeclare(id) => id,
-            _ => return Err(QbeError::AlreadyDefined),
-        };
+    pub fn function_at_ext<F: FnOnce(&mut QbeFunctionBuilder) -> Result<()>>(&mut self, at: QbeForwardDecl, params: &QbeFunctionParams, ret: Option<QbeType>, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
+        let id = at.0;
         if opts.export_as.is_some() {
             return Err(QbeError::ForwardDeclareName);
         }
@@ -320,10 +304,10 @@ impl QbeContext {
         Ok(QbeValue::Global(id))
     }
 
-    pub fn forward_declare(&mut self) -> QbeValue {
+    pub fn forward_declare(&mut self) -> QbeForwardDecl {
         let id = self.global_counter;
         self.global_counter += 1;
-        QbeValue::ForwardDeclare(id)
+        QbeForwardDecl(id)
     }
 
     pub fn compile(self) -> String {

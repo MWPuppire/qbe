@@ -1,6 +1,6 @@
 use std::fmt::{self, Write};
 use crate::{Result, QbeError};
-use crate::value::{QbeType, QbeValue, QbeLabel, QbeBasicType};
+use crate::value::{QbeType, QbeValue, QbeLabel, QbeBasicType, QbeForwardLabel};
 use paste::paste;
 
 #[derive(Clone, Debug, Default)]
@@ -121,7 +121,7 @@ macro_rules! binop {
 macro_rules! cmp_op {
     ($name:ident, $valid:ident) => {
         paste! {
-            pub fn [<cmp_ $name>]<X, Y>(&mut self, val1: X, val2: Y) -> Result<QbeValue>
+            pub fn [<$name>]<X, Y>(&mut self, val1: X, val2: Y) -> Result<QbeValue>
             where X: Into<QbeValue>, Y: Into<QbeValue> {
                 let val1 = val1.into();
                 let val2 = val2.into();
@@ -147,7 +147,7 @@ macro_rules! cmp_op {
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(QbeType::Long, id))
             }
-            pub fn [<cmp_ $name w>]<X, Y>(&mut self, val1: X, val2: Y) -> Result<QbeValue>
+            pub fn [<$name _w>]<X, Y>(&mut self, val1: X, val2: Y) -> Result<QbeValue>
             where X: Into<QbeValue>, Y: Into<QbeValue> {
                 let val1 = val1.into();
                 let val2 = val2.into();
@@ -197,8 +197,9 @@ impl QbeFunctionBuilder {
             env: params.env,
             variadic: params.variadic,
             local_counter: params.count(),
-            block_counter: 0,
-            compiled: String::from("@start\n"),
+            block_counter: 1,
+            // @0 is the start block
+            compiled: String::from("@0\n"),
             names: String::new(),
             ret,
             returned: false,
@@ -206,7 +207,7 @@ impl QbeFunctionBuilder {
     }
 
     pub fn start(&self) -> QbeLabel {
-        QbeLabel::Start
+        QbeLabel(0)
     }
 
     pub fn env(&self) -> Result<QbeValue> {
@@ -267,29 +268,27 @@ impl QbeFunctionBuilder {
         let id = self.block_counter;
         writeln!(&mut self.compiled, "@_{}", id)?;
         self.block_counter += 1;
-        Ok(QbeLabel::Actual(id))
+        Ok(QbeLabel(id))
     }
-    pub fn block_at(&mut self, at: QbeLabel) -> Result<QbeLabel> {
-        let id = match at {
-            QbeLabel::ForwardDeclare(id) => id,
-            _ => return Err(QbeError::AlreadyDefined),
-        };
+    pub fn block_at(&mut self, at: QbeForwardLabel) -> Result<QbeLabel> {
+        let id = at.0;
         writeln!(&mut self.compiled, "@_{}", id)?;
-        Ok(QbeLabel::Actual(id))
+        Ok(QbeLabel(id))
     }
-    pub fn forward_declare_block(&mut self) -> QbeLabel {
+    pub fn forward_declare_block(&mut self) -> QbeForwardLabel {
         let id = self.block_counter;
         self.block_counter += 1;
-        QbeLabel::ForwardDeclare(id)
+        QbeForwardLabel(id)
     }
 
     // phi
-    pub fn phi<X, Y>(&mut self, path1: QbeLabel, val1: X, path2: QbeLabel, val2: Y, t: QbeBasicType) -> Result<QbeValue>
-    where X: Into<QbeValue>, Y: Into<QbeValue> {
+    pub fn phi<X, XL, Y, YL>(&mut self, path1: XL, val1: X, path2: YL, val2: Y, t: QbeType) -> Result<QbeValue>
+    where X: Into<QbeValue>, XL: Into<QbeLabel>, Y: Into<QbeValue>, YL: Into<QbeLabel> {
         let id = self.local_counter;
+        let t: QbeBasicType = t.try_into()?;
         let t = t.promote();
-        writeln!(&mut self.compiled, "%_{} ={} phi {} {}, {} {}",
-            id, t, path1, val1.into(), path2, val2.into()
+        writeln!(&mut self.compiled, "%_{} ={} phi @_{} {}, @_{} {}",
+            id, t, path1.into().0, val1.into(), path2.into().0, val2.into()
         )?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t.into(), id))
@@ -478,28 +477,28 @@ impl QbeFunctionBuilder {
     unop!{extuh, val, integer, QbeType::Long}
     unop!{extsb, val, integer, QbeType::Long}
     unop!{extub, val, integer, QbeType::Long}
-    unop!{extshw, val, integer, QbeType::Word, extsh}
-    unop!{extuhw, val, integer, QbeType::Word, extuh}
-    unop!{extsbw, val, integer, QbeType::Word, extsb}
-    unop!{extubw, val, integer, QbeType::Word, extub}
+    unop!{extsh_w, val, integer, QbeType::Word, extsh}
+    unop!{extuh_w, val, integer, QbeType::Word, extuh}
+    unop!{extsb_w, val, integer, QbeType::Word, extsb}
+    unop!{extub_w, val, integer, QbeType::Word, extub}
     unop!{exts, val, floating, QbeType::Double}
     unop!{truncd, val, floating, QbeType::Single}
     unop!{stosi, val, single, QbeType::Long}
     unop!{stoui, val, single, QbeType::Long}
     unop!{dtosi, val, double, QbeType::Long}
     unop!{dtoui, val, double, QbeType::Long}
-    unop!{stosiw, val, single, QbeType::Word, stosi}
-    unop!{stouiw, val, single, QbeType::Word, stoui}
-    unop!{dtosiw, val, double, QbeType::Word, dtosi}
-    unop!{dtouiw, val, double, QbeType::Word, dtoui}
+    unop!{stosi_w, val, single, QbeType::Word, stosi}
+    unop!{stoui_w, val, single, QbeType::Word, stoui}
+    unop!{dtosi_w, val, double, QbeType::Word, dtosi}
+    unop!{dtoui_w, val, double, QbeType::Word, dtoui}
     unop!{swtof, val, word, QbeType::Double}
     unop!{uwtof, val, word, QbeType::Double}
     unop!{sltof, val, long, QbeType::Double}
     unop!{ultof, val, long, QbeType::Double}
-    unop!{swtofs, val, word, QbeType::Single, swtof}
-    unop!{uwtofs, val, word, QbeType::Single, uwtof}
-    unop!{sltofs, val, long, QbeType::Single, sltof}
-    unop!{ultofs, val, long, QbeType::Single, ultof}
+    unop!{swtof_s, val, word, QbeType::Single, swtof}
+    unop!{uwtof_s, val, word, QbeType::Single, uwtof}
+    unop!{sltof_s, val, long, QbeType::Single, sltof}
+    unop!{ultof_s, val, long, QbeType::Single, ultof}
 
     // copy and cast
     unop!{copy, val, any, val.type_of()}
@@ -527,22 +526,24 @@ impl QbeFunctionBuilder {
         writeln!(&mut self.compiled, "store{} {}, {}", typ, val, to)?;
         Ok(())
     }
-    pub fn store_t<X, Y>(&mut self, val: X, to: Y, t: QbeBasicType) -> Result<()>
+    pub fn store_t<X, Y>(&mut self, val: X, to: Y, t: QbeType) -> Result<()>
     where X: Into<QbeValue>, Y: Into<QbeValue> {
         let to = to.into();
         if !to.type_of().is_pointer() {
             return Err(QbeError::IncorrectType("pointer"));
         }
         let val = val.into();
+        let t: QbeBasicType = t.try_into()?;
         writeln!(&mut self.compiled, "store{} {}, {}", t, val, to)?;
         Ok(())
     }
-    pub fn load<T: Into<QbeValue>>(&mut self, from: T, t: QbeBasicType) -> Result<QbeValue> {
+    pub fn load<T: Into<QbeValue>>(&mut self, from: T, t: QbeType) -> Result<QbeValue> {
         let id = self.local_counter;
         let from = from.into();
         if !from.type_of().is_pointer() {
             return Err(QbeError::IncorrectType("pointer"));
         }
+        let t = t.try_into()?;
         match t {
             QbeBasicType::Word   => writeln!(&mut self.compiled, "%_{} =w loaduw {}", id, from)?,
             QbeBasicType::Long   => writeln!(&mut self.compiled, "%_{} =l loadl {}", id, from)?,
@@ -554,12 +555,13 @@ impl QbeFunctionBuilder {
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t.promote().into(), id))
     }
-    pub fn load_signed<T: Into<QbeValue>>(&mut self, from: T, t: QbeBasicType) -> Result<QbeValue> {
+    pub fn load_signed<T: Into<QbeValue>>(&mut self, from: T, t: QbeType) -> Result<QbeValue> {
         let id = self.local_counter;
         let from = from.into();
         if !from.type_of().is_pointer() {
             return Err(QbeError::IncorrectType("pointer"));
         }
+        let t = t.try_into()?;
         match t {
             QbeBasicType::Word   => writeln!(&mut self.compiled, "%_{} =w loadsw {}", id, from)?,
             QbeBasicType::Long   => writeln!(&mut self.compiled, "%_{} =l loadl {}", id, from)?,
@@ -593,12 +595,14 @@ impl QbeFunctionBuilder {
     unop!{alloc16, val, integer, QbeType::Long}
 
     // jumps
-    pub fn jmp(&mut self, to: QbeLabel) -> Result<()> {
-        writeln!(&mut self.compiled, "jmp {}", to)?;
+    pub fn jmp<T: Into<QbeLabel>>(&mut self, to: T) -> Result<()> {
+        writeln!(&mut self.compiled, "jmp @_{}", to.into().0)?;
         Ok(())
     }
-    pub fn jnz<T: Into<QbeValue>>(&mut self, cond: T, yes: QbeLabel, no: QbeLabel) -> Result<()> {
-        writeln!(&mut self.compiled, "jnz {}, {}, {}", cond.into(), yes, no)?;
+    pub fn jnz<T,  YL, NL>(&mut self, cond: T, yes: YL, no: NL) -> Result<()>
+    where T: Into<QbeValue>, YL: Into<QbeLabel>, NL: Into<QbeLabel> {
+        writeln!(&mut self.compiled, "jnz {}, @_{}, @_{}",
+            cond.into(), yes.into().0, no.into().0)?;
         Ok(())
     }
     pub fn ret(&mut self) -> Result<()> {
@@ -636,7 +640,7 @@ impl QbeFunctionBuilder {
         writeln!(&mut self.compiled, "vastart {}", at)?;
         Ok(())
     }
-    pub fn vaarg<T: Into<QbeValue>>(&mut self, from: T, t: QbeBasicType) -> Result<QbeValue> {
+    pub fn vaarg<T: Into<QbeValue>>(&mut self, from: T, t: QbeType) -> Result<QbeValue> {
         if !self.variadic {
             return Err(QbeError::NonVariadic);
         }
@@ -645,6 +649,7 @@ impl QbeFunctionBuilder {
             return Err(QbeError::IncorrectType("pointer"));
         }
         let id = self.local_counter;
+        let t: QbeBasicType = t.try_into()?;
         let t = t.promote();
         writeln!(&mut self.compiled, "%_{} ={} vaarg {}", id, t, from)?;
         self.local_counter += 1;
