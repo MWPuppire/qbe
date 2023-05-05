@@ -1,6 +1,10 @@
 use std::fmt;
 use crate::{Result, QbeError};
 
+pub(crate) trait QbeCodegen {
+    fn gen(&self, dest: &mut dyn fmt::Write) -> fmt::Result;
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum QbeBasicType {
     Word,
@@ -18,32 +22,34 @@ impl QbeBasicType {
             x => *x,
         }
     }
-}
-impl fmt::Display for QbeBasicType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    pub(crate) fn code_name(&self) -> &'static str {
         match self {
-            Self::Word   => write!(f, "w"),
-            Self::Long   => write!(f, "l"),
-            Self::Single => write!(f, "s"),
-            Self::Double => write!(f, "d"),
-            Self::Byte   => write!(f, "b"),
-            Self::Half   => write!(f, "h"),
+            Self::Word   => "w",
+            Self::Long   => "l",
+            Self::Single => "s",
+            Self::Double => "d",
+            Self::Byte   => "b",
+            Self::Half   => "h",
         }
     }
 }
-impl TryFrom<QbeType> for QbeBasicType {
-    type Error = QbeError;
-    fn try_from(item: QbeType) -> Result<Self> {
+impl QbeCodegen for QbeBasicType {
+    fn gen(&self, d: &mut dyn fmt::Write) -> fmt::Result {
+        d.write_str(self.code_name())
+    }
+}
+impl From<QbeType> for QbeBasicType {
+    fn from(item: QbeType) -> Self {
         match item {
-            QbeType::Word => Ok(Self::Word),
-            QbeType::Long => Ok(Self::Long),
-            QbeType::Single => Ok(Self::Single),
-            QbeType::Double => Ok(Self::Double),
-            QbeType::Byte => Ok(Self::Byte),
-            QbeType::Half => Ok(Self::Half),
-            QbeType::SignedByte => Ok(Self::Byte),
-            QbeType::SignedHalf => Ok(Self::Half),
-            QbeType::UserDefined(_) => Err(QbeError::NotBasic),
+            QbeType::Word => Self::Word,
+            QbeType::Long => Self::Long,
+            QbeType::Single => Self::Single,
+            QbeType::Double => Self::Double,
+            QbeType::Byte => Self::Byte,
+            QbeType::Half => Self::Half,
+            QbeType::SignedByte => Self::Byte,
+            QbeType::SignedHalf => Self::Half,
+            QbeType::UserDefined(_) => Self::Long,
         }
     }
 }
@@ -100,9 +106,6 @@ impl QbeType {
     pub(crate) fn is_any(&self) -> bool {
         true
     }
-    pub(crate) fn as_basic(&self) -> Result<QbeBasicType> {
-        (*self).try_into()
-    }
     pub fn is_integer(&self) -> bool {
         match self {
             Self::Single => false,
@@ -144,18 +147,18 @@ impl From<QbeBasicType> for QbeType {
         }
     }
 }
-impl fmt::Display for QbeType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl QbeCodegen for QbeType {
+    fn gen(&self, d: &mut dyn fmt::Write) -> fmt::Result {
         match self {
-            Self::Word            => write!(f, "w"),
-            Self::Long            => write!(f, "l"),
-            Self::Single          => write!(f, "s"),
-            Self::Double          => write!(f, "d"),
-            Self::Byte            => write!(f, "ub"),
-            Self::Half            => write!(f, "uh"),
-            Self::SignedByte      => write!(f, "sb"),
-            Self::SignedHalf      => write!(f, "sh"),
-            Self::UserDefined(id) => write!(f, ":_{}", id),
+            Self::Word            => d.write_str("w"),
+            Self::Long            => d.write_str("l"),
+            Self::Single          => d.write_str("s"),
+            Self::Double          => d.write_str("d"),
+            Self::Byte            => d.write_str("ub"),
+            Self::Half            => d.write_str("uh"),
+            Self::SignedByte      => d.write_str("sb"),
+            Self::SignedHalf      => d.write_str("sh"),
+            Self::UserDefined(id) => write!(d, ":_{}", id),
         }
     }
 }
@@ -169,17 +172,18 @@ pub enum QbeData<'a> {
     Named(&'a str),
     OffsetNamed(&'a str, u64),
 }
-impl<'a> fmt::Display for QbeData<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'a> QbeCodegen for QbeData<'a> {
+    fn gen(&self, d: &mut dyn fmt::Write) -> fmt::Result {
         match self {
-            Self::String(s)                 => write!(f, "\"{}\"", s.escape_default()),
-            Self::Global(id)                => write!(f, "$_{}", id),
-            Self::OffsetGlobal(id, offset)  => write!(f, "$_{}+{}", id, offset),
-            Self::Constant(typ, val)        => write!(f, "{} {}", unsafe {
-                typ.as_basic().unwrap_unchecked()
-            }, val),
-            Self::Named(name)               => name.fmt(f),
-            Self::OffsetNamed(name, offset) => write!(f, "{}+{}", name, offset),
+            Self::String(s)                 => write!(d, "\"{}\"", s.escape_default()),
+            Self::Global(id)                => write!(d, "$_{}", id),
+            Self::OffsetGlobal(id, offset)  => write!(d, "$_{}+{}", id, offset),
+            Self::Constant(typ, val)        => {
+                let basic: QbeBasicType = (*typ).into();
+                write!(d, "{} {}", basic.code_name(), val)
+            },
+            Self::Named(name)               => d.write_str(name),
+            Self::OffsetNamed(name, offset) => write!(d, "{}+{}", name, offset),
         }
     }
 }
@@ -255,9 +259,9 @@ impl From<&QbeForwardDecl> for QbeData<'_> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct QbeLabel(pub(crate) u32);
-impl fmt::Display for QbeLabel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "@_{}", self.0)
+impl QbeCodegen for QbeLabel {
+    fn gen(&self, d: &mut dyn fmt::Write) -> fmt::Result {
+        write!(d, "@_{}", self.0)
     }
 }
 
@@ -309,13 +313,13 @@ impl QbeValue {
         }
     }
 }
-impl fmt::Display for QbeValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl QbeCodegen for QbeValue {
+    fn gen(&self, d: &mut dyn fmt::Write) -> fmt::Result {
         match self {
-            Self::Global(id)         => write!(f, "$_{}", id),
-            Self::Temporary(_, id)   => write!(f, "%_{}", id),
-            Self::Constant(_, val)   => val.fmt(f),
-            Self::Named(name)        => name.fmt(f),
+            Self::Global(id)         => write!(d, "$_{}", id),
+            Self::Temporary(_, id)   => write!(d, "%_{}", id),
+            Self::Constant(_, val)   => write!(d, "{}", val),
+            Self::Named(name)        => d.write_str(name),
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::fmt::{self, Write};
 use crate::{Result, QbeError};
-use crate::value::{QbeType, QbeValue, QbeLabel, QbeBasicType, QbeForwardLabel};
+use crate::value::{QbeType, QbeValue, QbeLabel, QbeBasicType, QbeForwardLabel, QbeCodegen};
 use paste::paste;
 
 #[derive(Clone, Debug, Default)]
@@ -14,19 +14,20 @@ impl QbeFunctionParams<'_> {
         (self.params.len() + if self.env { 1 } else { 0 }).try_into().unwrap()
     }
 }
-impl fmt::Display for QbeFunctionParams<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl QbeCodegen for QbeFunctionParams<'_> {
+    fn gen(&self, d: &mut dyn Write) -> fmt::Result {
         let mut count = 0;
         if self.env {
-            write!(f, "env %_0, ")?;
+            d.write_str("env %_0, ")?;
             count += 1;
         }
         for memb in self.params {
-            write!(f, "{} %_{}, ", memb, count)?;
+            memb.gen(d)?;
+            write!(d, " %_{}, ", count)?;
             count += 1;
         }
         if self.variadic {
-            write!(f, "...")?;
+            write!(d, "...")?;
         }
         Ok(())
     }
@@ -41,10 +42,13 @@ macro_rules! unop {
                     return Err(QbeError::IncorrectType(stringify!($valid)));
                 }
                 let outtyp = $outtype.promote();
+                let out_name: QbeBasicType = outtyp.into();
                 let id = self.local_counter;
-                writeln!(&mut self.compiled,
-                    concat!("%_{} ={} ", stringify!($name), " {}"),
-                    id, outtyp, $input)?;
+                write!(&mut self.compiled,
+                    concat!("%_{} ={} ", stringify!($name), " "),
+                    id, out_name.code_name())?;
+                $input.gen(&mut self.compiled)?;
+                self.compiled.push_str("\n");
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(outtyp, id))
             }
@@ -59,10 +63,13 @@ macro_rules! unop {
                     return Err(QbeError::IncorrectType(stringify!($valid)));
                 }
                 let outtyp = $outtype.promote();
+                let out_name: QbeBasicType = outtyp.into();
                 let id = self.local_counter;
-                writeln!(&mut self.compiled,
-                    concat!("%_{} ={} ", stringify!($op_name), " {}"),
-                    id, outtyp, $input)?;
+                write!(&mut self.compiled,
+                    concat!("%_{} ={} ", stringify!($op_name), " "),
+                    id, out_name.code_name())?;
+                $input.gen(&mut self.compiled)?;
+                self.compiled.push_str("\n");
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(outtyp, id))
             }
@@ -84,10 +91,15 @@ macro_rules! binop {
                     return Err(QbeError::IncorrectType(stringify!($valid)));
                 }
                 let outtyp = $outtype.promote();
+                let out_name: QbeBasicType = outtyp.into();
                 let id = self.local_counter;
-                writeln!(&mut self.compiled,
-                    concat!("%_{} ={} ", stringify!($name), " {}, {}"),
-                    id, outtyp, $in1, $in2)?;
+                write!(&mut self.compiled,
+                    concat!("%_{} ={} ", stringify!($name), " "),
+                    id, out_name.code_name())?;
+                $in1.gen(&mut self.compiled)?;
+                self.compiled.push_str(", ");
+                $in2.gen(&mut self.compiled)?;
+                self.compiled.push_str("\n");
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(outtyp, id))
             }
@@ -107,10 +119,15 @@ macro_rules! binop {
                     return Err(QbeError::IncorrectType(stringify!($valid)));
                 }
                 let outtyp = $outtype.promote();
+                let out_name: QbeBasicType = outtyp.into();
                 let id = self.local_counter;
-                writeln!(&mut self.compiled,
-                    concat!("%_{} ={} ", stringify!($op_name), " {}, {}"),
-                    id, outtyp, $in1, $in2)?;
+                write!(&mut self.compiled,
+                    concat!("%_{} ={} ", stringify!($op_name), " "),
+                    id, out_name.code_name())?;
+                $in1.gen(&mut self.compiled)?;
+                self.compiled.push_str(", ");
+                $in2.gen(&mut self.compiled)?;
+                self.compiled.push_str("\n");
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(outtyp, id))
             }
@@ -141,9 +158,13 @@ macro_rules! cmp_op {
                     QbeType::UserDefined(_) => "l",
                 };
                 let id = self.local_counter;
-                writeln!(&mut self.compiled,
-                    concat!("%_{} =l c", stringify!($name), "{} {}, {}"),
-                    id, typ, val1, val2)?;
+                write!(&mut self.compiled,
+                    concat!("%_{} =l c", stringify!($name), "{} "),
+                    id, typ)?;
+                val1.gen(&mut self.compiled)?;
+                self.compiled.push_str(", ");
+                val2.gen(&mut self.compiled)?;
+                self.compiled.push_str("\n");
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(QbeType::Long, id))
             }
@@ -167,9 +188,13 @@ macro_rules! cmp_op {
                     QbeType::UserDefined(_) => "l",
                 };
                 let id = self.local_counter;
-                writeln!(&mut self.compiled,
-                    concat!("%_{} =w c", stringify!($name), "{} {}, {}"),
-                    id, typ, val1, val2)?;
+                write!(&mut self.compiled,
+                    concat!("%_{} =w c", stringify!($name), "{} "),
+                    id, typ)?;
+                val1.gen(&mut self.compiled)?;
+                self.compiled.push_str(", ");
+                val2.gen(&mut self.compiled)?;
+                self.compiled.push_str("\n");
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(QbeType::Word, id))
             }
@@ -198,8 +223,8 @@ impl QbeFunctionBuilder {
             variadic: params.variadic,
             local_counter: params.count(),
             block_counter: 1,
-            // @0 is the start block
-            compiled: String::from("@0\n"),
+            // @_0 is the start block
+            compiled: String::from("@_0\n"),
             names: String::new(),
             ret,
             returned: false,
@@ -285,29 +310,55 @@ impl QbeFunctionBuilder {
     pub fn phi<X, XL, Y, YL>(&mut self, path1: XL, val1: X, path2: YL, val2: Y, t: QbeType) -> Result<QbeValue>
     where X: Into<QbeValue>, XL: Into<QbeLabel>, Y: Into<QbeValue>, YL: Into<QbeLabel> {
         let id = self.local_counter;
-        let t: QbeBasicType = t.try_into()?;
+        let t: QbeBasicType = t.into();
         let t = t.promote();
-        writeln!(&mut self.compiled, "%_{} ={} phi @_{} {}, @_{} {}",
-            id, t, path1.into().0, val1.into(), path2.into().0, val2.into()
-        )?;
+        write!(&mut self.compiled, "%_{} ={} phi @_{} ", id, t.code_name(), path1.into().0)?;
+        val1.into().gen(&mut self.compiled)?;
+        write!(&mut self.compiled, ", @_{} ", path2.into().0)?;
+        val2.into().gen(&mut self.compiled)?;
+        self.compiled.push_str("\n");
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t.into(), id))
     }
 
     // call
+    fn call_inner<I, A>(&mut self, func: QbeValue, env: Option<QbeValue>, args: I, va_args: Option<I>) -> Result<()>
+    where I: IntoIterator<Item = A>, A: Into<QbeValue> {
+        self.compiled.push_str("call");
+        func.gen(&mut self.compiled)?;
+        self.compiled.push_str("(");
+        if let Some(env) = env {
+            self.compiled.push_str("env ");
+            env.gen(&mut self.compiled)?;
+            self.compiled.push_str(", ");
+        }
+        for arg in args {
+            let arg = arg.into();
+            arg.type_of().gen(&mut self.compiled)?;
+            self.compiled.push_str(" ");
+            arg.gen(&mut self.compiled)?;
+            self.compiled.push_str(", ");
+        }
+        if let Some(va) = va_args {
+            self.compiled.push_str("..., ");
+            for arg in va {
+                let arg = arg.into();
+                arg.type_of().gen(&mut self.compiled)?;
+                self.compiled.push_str(" ");
+                arg.gen(&mut self.compiled)?;
+                self.compiled.push_str(", ");
+            }
+        }
+        self.compiled.push_str(")\n");
+        Ok(())
+    }
     pub fn call<F, I, A>(&mut self, func: F, args: I) -> Result<()>
     where F: Into<QbeValue>, I: IntoIterator<Item = A>, A: Into<QbeValue> {
         let func = func.into();
         if !func.is_global() {
             return Err(QbeError::NonGlobalCall);
         }
-        write!(&mut self.compiled, "call {}(", func)?;
-        for arg in args {
-            let arg = arg.into();
-            write!(&mut self.compiled, "{} {}, ", arg.type_of().pointer_ud(), arg)?;
-        }
-        writeln!(&mut self.compiled, ")")?;
-        Ok(())
+        self.call_inner(func, None, args, None)
     }
     pub fn call_ret<F, I, A>(&mut self, func: F, args: I, t: QbeType) -> Result<QbeValue>
     where F: Into<QbeValue>, I: IntoIterator<Item = A>, A: Into<QbeValue> {
@@ -316,12 +367,10 @@ impl QbeFunctionBuilder {
             return Err(QbeError::NonGlobalCall);
         }
         let id = self.local_counter;
-        write!(&mut self.compiled, "%_{} ={} call {}(", id, t, func)?;
-        for arg in args {
-            let arg = arg.into();
-            write!(&mut self.compiled, "{} {}, ", arg.type_of().pointer_ud(), arg)?;
-        }
-        writeln!(&mut self.compiled, ")")?;
+        write!(&mut self.compiled, "%_{} =", id)?;
+        t.gen(&mut self.compiled)?;
+        self.compiled.push_str(" ");
+        self.call_inner(func, None, args, None)?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
     }
@@ -331,13 +380,7 @@ impl QbeFunctionBuilder {
         if !func.is_global() {
             return Err(QbeError::NonGlobalCall);
         }
-        write!(&mut self.compiled, "call {}(env {}, ", func, env.into())?;
-        for arg in args {
-            let arg = arg.into();
-            write!(&mut self.compiled, "{} {}, ", arg.type_of().pointer_ud(), arg)?;
-        }
-        writeln!(&mut self.compiled, ")")?;
-        Ok(())
+        self.call_inner(func, Some(env.into()), args, None)
     }
     pub fn call_env_ret<F, E, I, A>(&mut self, func: F, env: E, args: I, t: QbeType) -> Result<QbeValue>
     where F: Into<QbeValue>, E: Into<QbeValue>, I: IntoIterator<Item = A>, A: Into<QbeValue> {
@@ -346,12 +389,10 @@ impl QbeFunctionBuilder {
             return Err(QbeError::NonGlobalCall);
         }
         let id = self.local_counter;
-        write!(&mut self.compiled, "%_{} ={} call {}({}, ", id, t, func, env.into())?;
-        for arg in args {
-            let arg = arg.into();
-            write!(&mut self.compiled, "{} {}, ", arg.type_of().pointer_ud(), arg)?;
-        }
-        writeln!(&mut self.compiled, ")")?;
+        write!(&mut self.compiled, "%_{} =", id)?;
+        t.gen(&mut self.compiled)?;
+        self.compiled.push_str(" ");
+        self.call_inner(func, Some(env.into()), args, None)?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
     }
@@ -361,18 +402,7 @@ impl QbeFunctionBuilder {
         if !func.is_global() {
             return Err(QbeError::NonGlobalCall);
         }
-        write!(&mut self.compiled, "call {}(", func)?;
-        for arg in args {
-            let arg = arg.into();
-            write!(&mut self.compiled, "{} {}, ", arg.type_of().pointer_ud(), arg)?;
-        }
-        write!(&mut self.compiled, "..., ")?;
-        for arg in va_args {
-            let arg = arg.into();
-            write!(&mut self.compiled, "{} {}, ", arg.type_of().pointer_ud(), arg)?;
-        }
-        writeln!(&mut self.compiled, ")")?;
-        Ok(())
+        self.call_inner(func, None, args, Some(va_args))
     }
     pub fn call_va_ret<F, I, A>(&mut self, func: F, args: I, va_args: I, t: QbeType) -> Result<QbeValue>
     where F: Into<QbeValue>, I: IntoIterator<Item = A>, A: Into<QbeValue> {
@@ -381,17 +411,10 @@ impl QbeFunctionBuilder {
             return Err(QbeError::NonGlobalCall);
         }
         let id = self.local_counter;
-        write!(&mut self.compiled, "%_{} ={} call {}(", id, t, func)?;
-        for arg in args {
-            let arg = arg.into();
-            write!(&mut self.compiled, "{} {}, ", arg.type_of().pointer_ud(), arg)?;
-        }
-        write!(&mut self.compiled, "..., ")?;
-        for arg in va_args {
-            let arg = arg.into();
-            write!(&mut self.compiled, "{} {}, ", arg.type_of().pointer_ud(), arg)?;
-        }
-        writeln!(&mut self.compiled, ")")?;
+        write!(&mut self.compiled, "%_{} =", id)?;
+        t.gen(&mut self.compiled)?;
+        self.compiled.push_str(" ");
+        self.call_inner(func, None, args, Some(va_args))?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
     }
@@ -401,18 +424,7 @@ impl QbeFunctionBuilder {
         if !func.is_global() {
             return Err(QbeError::NonGlobalCall);
         }
-        write!(&mut self.compiled, "call {}(env {}, ", func, env.into())?;
-        for arg in args {
-            let arg = arg.into();
-            write!(&mut self.compiled, "{} {}, ", arg.type_of().pointer_ud(), arg)?;
-        }
-        write!(&mut self.compiled, "..., ")?;
-        for arg in va_args {
-            let arg = arg.into();
-            write!(&mut self.compiled, "{} {}, ", arg.type_of().pointer_ud(), arg)?;
-        }
-        writeln!(&mut self.compiled, ")")?;
-        Ok(())
+        self.call_inner(func, Some(env.into()), args, Some(va_args))
     }
     pub fn call_va_env_ret<F, E, I, A>(&mut self, func: F, env: E, args: I, va_args: I, t: QbeType) -> Result<QbeValue>
     where F: Into<QbeValue>, E: Into<QbeValue>, I: IntoIterator<Item = A>, A: Into<QbeValue> {
@@ -421,17 +433,10 @@ impl QbeFunctionBuilder {
             return Err(QbeError::NonGlobalCall);
         }
         let id = self.local_counter;
-        write!(&mut self.compiled, "%_{} ={} call {}(env {}, ", id, t, func, env.into())?;
-        for arg in args {
-            let arg = arg.into();
-            write!(&mut self.compiled, "{} {}, ", arg.type_of().pointer_ud(), arg)?;
-        }
-        write!(&mut self.compiled, "..., ")?;
-        for arg in va_args {
-            let arg = arg.into();
-            write!(&mut self.compiled, "{} {}, ", arg.type_of().pointer_ud(), arg)?;
-        }
-        writeln!(&mut self.compiled, ")")?;
+        write!(&mut self.compiled, "%_{} =", id)?;
+        t.gen(&mut self.compiled)?;
+        self.compiled.push_str(" ");
+        self.call_inner(func, Some(env.into()), args, Some(va_args))?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
     }
@@ -523,7 +528,11 @@ impl QbeFunctionBuilder {
             QbeType::SignedHalf     => "h",
             QbeType::UserDefined(_) => "l",
         };
-        writeln!(&mut self.compiled, "store{} {}, {}", typ, val, to)?;
+        write!(&mut self.compiled, "store{} ", typ)?;
+        val.gen(&mut self.compiled)?;
+        self.compiled.push_str(", ");
+        to.gen(&mut self.compiled)?;
+        self.compiled.push_str("\n");
         Ok(())
     }
     pub fn store_t<X, Y>(&mut self, val: X, to: Y, t: QbeType) -> Result<()>
@@ -533,8 +542,12 @@ impl QbeFunctionBuilder {
             return Err(QbeError::IncorrectType("pointer"));
         }
         let val = val.into();
-        let t: QbeBasicType = t.try_into()?;
-        writeln!(&mut self.compiled, "store{} {}, {}", t, val, to)?;
+        let t: QbeBasicType = t.into();
+        write!(&mut self.compiled, "store{} ", t.code_name())?;
+        val.gen(&mut self.compiled)?;
+        self.compiled.push_str(", ");
+        to.gen(&mut self.compiled)?;
+        self.compiled.push_str("\n");
         Ok(())
     }
     pub fn load<T: Into<QbeValue>>(&mut self, from: T, t: QbeType) -> Result<QbeValue> {
@@ -543,15 +556,17 @@ impl QbeFunctionBuilder {
         if !from.type_of().is_pointer() {
             return Err(QbeError::IncorrectType("pointer"));
         }
-        let t = t.try_into()?;
+        let t = t.into();
         match t {
-            QbeBasicType::Word   => writeln!(&mut self.compiled, "%_{} =w loaduw {}", id, from)?,
-            QbeBasicType::Long   => writeln!(&mut self.compiled, "%_{} =l loadl {}", id, from)?,
-            QbeBasicType::Single => writeln!(&mut self.compiled, "%_{} =s loads {}", id, from)?,
-            QbeBasicType::Double => writeln!(&mut self.compiled, "%_{} =d loadd {}", id, from)?,
-            QbeBasicType::Byte   => writeln!(&mut self.compiled, "%_{} =w loadub {}", id, from)?,
-            QbeBasicType::Half   => writeln!(&mut self.compiled, "%_{} =w loaduh {}", id, from)?,
+            QbeBasicType::Word   => write!(&mut self.compiled, "%_{} =w loaduw ", id)?,
+            QbeBasicType::Long   => write!(&mut self.compiled, "%_{} =l loadl ", id)?,
+            QbeBasicType::Single => write!(&mut self.compiled, "%_{} =s loads ", id)?,
+            QbeBasicType::Double => write!(&mut self.compiled, "%_{} =d loadd ", id)?,
+            QbeBasicType::Byte   => write!(&mut self.compiled, "%_{} =w loadub ", id)?,
+            QbeBasicType::Half   => write!(&mut self.compiled, "%_{} =w loaduh ", id)?,
         };
+        from.gen(&mut self.compiled)?;
+        self.compiled.push_str("\n");
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t.promote().into(), id))
     }
@@ -561,15 +576,17 @@ impl QbeFunctionBuilder {
         if !from.type_of().is_pointer() {
             return Err(QbeError::IncorrectType("pointer"));
         }
-        let t = t.try_into()?;
+        let t = t.into();
         match t {
-            QbeBasicType::Word   => writeln!(&mut self.compiled, "%_{} =w loadsw {}", id, from)?,
-            QbeBasicType::Long   => writeln!(&mut self.compiled, "%_{} =l loadl {}", id, from)?,
-            QbeBasicType::Single => writeln!(&mut self.compiled, "%_{} =s loads {}", id, from)?,
-            QbeBasicType::Double => writeln!(&mut self.compiled, "%_{} =d loadd {}", id, from)?,
-            QbeBasicType::Byte   => writeln!(&mut self.compiled, "%_{} =w loadsb {}", id, from)?,
-            QbeBasicType::Half   => writeln!(&mut self.compiled, "%_{} =w loadsh {}", id, from)?,
+            QbeBasicType::Word   => write!(&mut self.compiled, "%_{} =w loadsw ", id)?,
+            QbeBasicType::Long   => write!(&mut self.compiled, "%_{} =l loadl ", id)?,
+            QbeBasicType::Single => write!(&mut self.compiled, "%_{} =s loads ", id)?,
+            QbeBasicType::Double => write!(&mut self.compiled, "%_{} =d loadd ", id)?,
+            QbeBasicType::Byte   => write!(&mut self.compiled, "%_{} =w loadsb ", id)?,
+            QbeBasicType::Half   => write!(&mut self.compiled, "%_{} =w loadsh ", id)?,
         };
+        from.gen(&mut self.compiled)?;
+        self.compiled.push_str("\n");
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t.promote().into(), id))
     }
@@ -587,7 +604,13 @@ impl QbeFunctionBuilder {
         if !size.type_of().is_integer() {
             return Err(QbeError::IncorrectType("integer"));
         }
-        writeln!(&mut self.compiled, "blit {}, {}, {}", src, dst, size)?;
+        self.compiled.push_str("blit ");
+        src.gen(&mut self.compiled)?;
+        self.compiled.push_str(", ");
+        dst.gen(&mut self.compiled)?;
+        self.compiled.push_str(", ");
+        size.gen(&mut self.compiled)?;
+        self.compiled.push_str("\n");
         Ok(())
     }
     unop!{alloc4, val, integer, QbeType::Long}
@@ -601,30 +624,33 @@ impl QbeFunctionBuilder {
     }
     pub fn jnz<T,  YL, NL>(&mut self, cond: T, yes: YL, no: NL) -> Result<()>
     where T: Into<QbeValue>, YL: Into<QbeLabel>, NL: Into<QbeLabel> {
-        writeln!(&mut self.compiled, "jnz {}, @_{}, @_{}",
-            cond.into(), yes.into().0, no.into().0)?;
+        self.compiled.push_str("jnz ");
+        cond.into().gen(&mut self.compiled)?;
+        writeln!(&mut self.compiled, ", @_{}, @_{}", yes.into().0, no.into().0)?;
         Ok(())
     }
     pub fn ret(&mut self) -> Result<()> {
-        if let Some(ret) = self.ret {
-            return Err(QbeError::IncorrectReturn(ret));
+        if self.ret.is_some() {
+            return Err(QbeError::IncorrectReturn);
         }
-        writeln!(&mut self.compiled, "ret")?;
+        self.compiled.push_str("ret\n");
         self.returned = true;
         Ok(())
     }
-    pub fn ret_val<T: Into<QbeValue>>(&mut self, value: T) -> Result<()> {
+    pub fn ret_val<T: Into<QbeValue>>(&mut self, val: T) -> Result<()> {
         let Some(ret) = self.ret else { return Err(QbeError::CannotReturnValue) };
-        let out = value.into();
-        if out.type_of() != ret {
-            return Err(QbeError::IncorrectReturn(ret));
+        let val = val.into();
+        if val.type_of() != ret {
+            return Err(QbeError::IncorrectReturn);
         }
-        writeln!(&mut self.compiled, "ret {}", out)?;
+        self.compiled.push_str("ret ");
+        val.gen(&mut self.compiled)?;
+        self.compiled.push_str("\n");
         self.returned = true;
         Ok(())
     }
     pub fn hlt(&mut self) -> Result<()> {
-        writeln!(&mut self.compiled, "hlt")?;
+        self.compiled.push_str("hlt\n");
         Ok(())
     }
 
@@ -637,7 +663,9 @@ impl QbeFunctionBuilder {
         if !at.type_of().is_pointer() {
             return Err(QbeError::IncorrectType("pointer"));
         }
-        writeln!(&mut self.compiled, "vastart {}", at)?;
+        write!(&mut self.compiled, "vastart ")?;
+        at.gen(&mut self.compiled)?;
+        self.compiled.push_str("\n");
         Ok(())
     }
     pub fn vaarg<T: Into<QbeValue>>(&mut self, from: T, t: QbeType) -> Result<QbeValue> {
@@ -649,9 +677,10 @@ impl QbeFunctionBuilder {
             return Err(QbeError::IncorrectType("pointer"));
         }
         let id = self.local_counter;
-        let t: QbeBasicType = t.try_into()?;
+        let t: QbeBasicType = t.into();
         let t = t.promote();
-        writeln!(&mut self.compiled, "%_{} ={} vaarg {}", id, t, from)?;
+        write!(&mut self.compiled, "%_{} ={} vaarg ", id, t.code_name())?;
+        from.gen(&mut self.compiled)?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t.into(), id))
     }

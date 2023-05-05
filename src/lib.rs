@@ -15,8 +15,8 @@ pub use context::{QbeContext, QbeDeclBuilder};
 pub enum QbeError {
     #[error("unknown error while compiling")]
     CompileError(#[from] std::fmt::Error),
-    #[error("expected return type {0}")]
-    IncorrectReturn(QbeType),
+    #[error("unexpected return type")]
+    IncorrectReturn,
     #[error("expected {0} parameter")]
     IncorrectType(&'static str),
     #[error("cannot return a value from this function")]
