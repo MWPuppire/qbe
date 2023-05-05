@@ -24,5 +24,5 @@ fn main() {
         f.store(i2, global_a)?;
         Ok(None)
     }).unwrap();
-    println!("{}", ctx.compile());
+    println!("{}", ctx.into_assembly(QbeTarget::Arm64Apple).unwrap());
 }

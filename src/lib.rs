@@ -40,3 +40,24 @@ pub enum QbeError {
 }
 
 pub type Result<T> = std::result::Result<T, QbeError>;
+
+#[cfg(feature = "qbe-command")]
+pub enum QbeTarget {
+    Amd64,
+    Amd64Apple,
+    Arm64,
+    Arm64Apple,
+    RiscV64,
+}
+#[cfg(feature = "qbe-command")]
+impl QbeTarget {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Amd64 => "amd64_sysv",
+            Self::Amd64Apple => "amd64_apple",
+            Self::Arm64 => "arm64",
+            Self::Arm64Apple => "arm64_apple",
+            Self::RiscV64 => "rv64",
+        }
+    }
+}
