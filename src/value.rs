@@ -6,55 +6,6 @@ pub(crate) trait QbeCodegen {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum QbeBasicType {
-    Word,
-    Long,
-    Single,
-    Double,
-    Byte,
-    Half,
-}
-impl QbeBasicType {
-    pub(crate) fn promote(&self) -> QbeBasicType {
-        match self {
-            Self::Byte => Self::Word,
-            Self::Half => Self::Word,
-            x => *x,
-        }
-    }
-    pub(crate) fn code_name(&self) -> &'static str {
-        match self {
-            Self::Word   => "w",
-            Self::Long   => "l",
-            Self::Single => "s",
-            Self::Double => "d",
-            Self::Byte   => "b",
-            Self::Half   => "h",
-        }
-    }
-}
-impl QbeCodegen for QbeBasicType {
-    fn gen(&self, d: &mut dyn fmt::Write) -> fmt::Result {
-        d.write_str(self.code_name())
-    }
-}
-impl From<QbeType> for QbeBasicType {
-    fn from(item: QbeType) -> Self {
-        match item {
-            QbeType::Word => Self::Word,
-            QbeType::Long => Self::Long,
-            QbeType::Single => Self::Single,
-            QbeType::Double => Self::Double,
-            QbeType::Byte => Self::Byte,
-            QbeType::Half => Self::Half,
-            QbeType::SignedByte => Self::Byte,
-            QbeType::SignedHalf => Self::Half,
-            QbeType::UserDefined(_) => Self::Long,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QbeType {
     Word,
     Long,
@@ -67,6 +18,19 @@ pub enum QbeType {
     UserDefined(u32),
 }
 impl QbeType {
+    pub(crate) fn basic_name(&self) -> &'static str {
+        match self {
+            Self::Word           => "w",
+            Self::Long           => "l",
+            Self::Single         => "s",
+            Self::Double         => "d",
+            Self::Byte           => "b",
+            Self::Half           => "h",
+            Self::SignedByte     => "b",
+            Self::SignedHalf     => "h",
+            Self::UserDefined(_) => "l",
+        }
+    }
     pub(crate) fn promote(&self) -> QbeType {
         match self {
             Self::Byte => Self::Word,
@@ -135,18 +99,6 @@ impl QbeType {
         }
     }
 }
-impl From<QbeBasicType> for QbeType {
-    fn from(item: QbeBasicType) -> Self {
-        match item {
-            QbeBasicType::Word   => Self::Word,
-            QbeBasicType::Long   => Self::Long,
-            QbeBasicType::Single => Self::Single,
-            QbeBasicType::Double => Self::Double,
-            QbeBasicType::Byte   => Self::Byte,
-            QbeBasicType::Half   => Self::Half,
-        }
-    }
-}
 impl QbeCodegen for QbeType {
     fn gen(&self, d: &mut dyn fmt::Write) -> fmt::Result {
         match self {
@@ -178,10 +130,7 @@ impl<'a> QbeCodegen for QbeData<'a> {
             Self::String(s)                 => write!(d, "\"{}\"", s.escape_default()),
             Self::Global(id)                => write!(d, "$_{}", id),
             Self::OffsetGlobal(id, offset)  => write!(d, "$_{}+{}", id, offset),
-            Self::Constant(typ, val)        => {
-                let basic: QbeBasicType = (*typ).into();
-                write!(d, "{} {}", basic.code_name(), val)
-            },
+            Self::Constant(typ, val)        => write!(d, "{} {}", typ.basic_name(), val),
             Self::Named(name)               => d.write_str(name),
             Self::OffsetNamed(name, offset) => write!(d, "{}+{}", name, offset),
         }

@@ -1,6 +1,6 @@
 use std::fmt::Write;
 use crate::{Result, QbeError};
-use crate::value::{QbeValue, QbeData, QbeType, QbeBasicType, QbeForwardDecl, QbeCodegen};
+use crate::value::{QbeValue, QbeData, QbeType, QbeForwardDecl, QbeCodegen};
 use crate::func::{QbeFunctionBuilder, QbeFunctionParams};
 
 #[derive(Builder, Clone, Debug)]
@@ -189,8 +189,7 @@ impl QbeContext {
             if !memb.is_numeric() {
                 return Err(QbeError::NotBasic);
             }
-            let memb: QbeBasicType = (*memb).into();
-            write!(&mut self.compiled, "{}, ", memb.code_name())?;
+            write!(&mut self.compiled, "{}, ", memb.basic_name())?;
         }
         self.compiled.push_str("}\n");
         self.type_counter += 1;
@@ -203,8 +202,7 @@ impl QbeContext {
             if !memb.is_numeric() {
                 return Err(QbeError::NotBasic);
             }
-            let memb: QbeBasicType = (*memb).into();
-            write!(&mut self.compiled, "{}, ", memb.code_name())?;
+            write!(&mut self.compiled, "{}, ", memb.basic_name())?;
         }
         self.compiled.push_str("}\n");
         self.type_counter += 1;
