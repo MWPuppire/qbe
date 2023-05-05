@@ -15,12 +15,8 @@ pub use context::{QbeContext, QbeDeclBuilder};
 pub enum QbeError {
     #[error("unknown error while compiling")]
     CompileError(#[from] std::fmt::Error),
-    #[error("unexpected return type")]
-    IncorrectReturn,
     #[error("expected {0} parameter")]
     IncorrectType(&'static str),
-    #[error("cannot return a value from this function")]
-    CannotReturnValue,
     #[error("argument out of bounds")]
     ArgumentOutOfBounds,
     #[error("this function doesn't have an env argument")]
