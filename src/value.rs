@@ -71,32 +71,16 @@ impl QbeType {
         true
     }
     pub fn is_integer(&self) -> bool {
-        match self {
-            Self::Single => false,
-            Self::Double => false,
-            Self::UserDefined(_) => false,
-            _ => true,
-        }
+        !matches!(self, Self::Single | Self::Double | Self::UserDefined(_))
     }
     pub fn is_numeric(&self) -> bool {
-        match self {
-            Self::UserDefined(_) => false,
-            _ => true,
-        }
+        !matches!(self, Self::UserDefined(_))
     }
     pub fn is_floating(&self) -> bool {
-        match self {
-            Self::Single => true,
-            Self::Double => true,
-            _ => false,
-        }
+        matches!(self, Self::Single | Self::Double)
     }
     pub fn is_pointer(&self) -> bool {
-        match self {
-            Self::Long => true,
-            Self::UserDefined(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Long | Self::UserDefined(_))
     }
 }
 impl QbeCodegen for QbeType {
@@ -255,11 +239,7 @@ impl QbeValue {
     pub(crate) fn is_global(&self) -> bool {
         // how the code is currently written, only global symbols can be `Named`
         // if this changes, this function will need to change accordingly
-        match self {
-            Self::Global(_) => true,
-            Self::Named(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Global(_) | Self::Named(_))
     }
 }
 impl QbeCodegen for QbeValue {

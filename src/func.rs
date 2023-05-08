@@ -47,7 +47,7 @@ macro_rules! unop {
                     concat!("\t%_{} ={} ", stringify!($name), " "),
                     id, outtyp.basic_name())?;
                 $input.gen(&mut self.compiled)?;
-                self.compiled.push_str("\n");
+                self.compiled.push('\n');
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(outtyp, id))
             }
@@ -67,7 +67,7 @@ macro_rules! unop {
                     concat!("\t%_{} ={} ", stringify!($op_name), " "),
                     id, outtyp.basic_name())?;
                 $input.gen(&mut self.compiled)?;
-                self.compiled.push_str("\n");
+                self.compiled.push('\n');
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(outtyp, id))
             }
@@ -96,7 +96,7 @@ macro_rules! binop {
                 $in1.gen(&mut self.compiled)?;
                 self.compiled.push_str(", ");
                 $in2.gen(&mut self.compiled)?;
-                self.compiled.push_str("\n");
+                self.compiled.push('\n');
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(outtyp, id))
             }
@@ -123,7 +123,7 @@ macro_rules! binop {
                 $in1.gen(&mut self.compiled)?;
                 self.compiled.push_str(", ");
                 $in2.gen(&mut self.compiled)?;
-                self.compiled.push_str("\n");
+                self.compiled.push('\n');
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(outtyp, id))
             }
@@ -160,7 +160,7 @@ macro_rules! cmp_op {
                 val1.gen(&mut self.compiled)?;
                 self.compiled.push_str(", ");
                 val2.gen(&mut self.compiled)?;
-                self.compiled.push_str("\n");
+                self.compiled.push('\n');
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(QbeType::Long, id))
             }
@@ -190,7 +190,7 @@ macro_rules! cmp_op {
                 val1.gen(&mut self.compiled)?;
                 self.compiled.push_str(", ");
                 val2.gen(&mut self.compiled)?;
-                self.compiled.push_str("\n");
+                self.compiled.push('\n');
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(QbeType::Word, id))
             }
@@ -315,7 +315,7 @@ impl QbeFunctionBuilder {
         val1.gen(&mut self.compiled)?;
         write!(&mut self.compiled, ", @_{} ", path2.into().0)?;
         val2.gen(&mut self.compiled)?;
-        self.compiled.push_str("\n");
+        self.compiled.push('\n');
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
     }
@@ -327,9 +327,9 @@ impl QbeFunctionBuilder {
         val1.into().gen(&mut self.compiled)?;
         write!(&mut self.compiled, ", @_{} ", path2.into().0)?;
         val2.into().gen(&mut self.compiled)?;
-        self.compiled.push_str("\n");
+        self.compiled.push('\n');
         self.local_counter += 1;
-        Ok(QbeValue::Temporary(t.into(), id))
+        Ok(QbeValue::Temporary(t, id))
     }
 
     // call
@@ -337,7 +337,7 @@ impl QbeFunctionBuilder {
     where I: IntoIterator<Item = A>, A: Into<QbeValue> {
         self.compiled.push_str("call");
         func.gen(&mut self.compiled)?;
-        self.compiled.push_str("(");
+        self.compiled.push('(');
         if let Some(env) = env {
             self.compiled.push_str("env ");
             env.gen(&mut self.compiled)?;
@@ -346,7 +346,7 @@ impl QbeFunctionBuilder {
         for arg in args {
             let arg = arg.into();
             arg.type_of().gen(&mut self.compiled)?;
-            self.compiled.push_str(" ");
+            self.compiled.push(' ');
             arg.gen(&mut self.compiled)?;
             self.compiled.push_str(", ");
         }
@@ -355,7 +355,7 @@ impl QbeFunctionBuilder {
             for arg in va {
                 let arg = arg.into();
                 arg.type_of().gen(&mut self.compiled)?;
-                self.compiled.push_str(" ");
+                self.compiled.push(' ');
                 arg.gen(&mut self.compiled)?;
                 self.compiled.push_str(", ");
             }
@@ -369,7 +369,7 @@ impl QbeFunctionBuilder {
         if !func.is_global() {
             return Err(QbeError::NonGlobalCall);
         }
-        self.compiled.push_str("\t");
+        self.compiled.push('\t');
         self.call_inner(func, None, args, None)
     }
     pub fn call_ret<F, I, A>(&mut self, func: F, args: I, t: QbeType) -> Result<QbeValue>
@@ -381,7 +381,7 @@ impl QbeFunctionBuilder {
         let id = self.local_counter;
         write!(&mut self.compiled, "\t%_{} =", id)?;
         t.gen(&mut self.compiled)?;
-        self.compiled.push_str(" ");
+        self.compiled.push(' ');
         self.call_inner(func, None, args, None)?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
@@ -392,7 +392,7 @@ impl QbeFunctionBuilder {
         if !func.is_global() {
             return Err(QbeError::NonGlobalCall);
         }
-        self.compiled.push_str("\t");
+        self.compiled.push('\t');
         self.call_inner(func, Some(env.into()), args, None)
     }
     pub fn call_env_ret<F, E, I, A>(&mut self, func: F, env: E, args: I, t: QbeType) -> Result<QbeValue>
@@ -404,7 +404,7 @@ impl QbeFunctionBuilder {
         let id = self.local_counter;
         write!(&mut self.compiled, "\t%_{} =", id)?;
         t.gen(&mut self.compiled)?;
-        self.compiled.push_str(" ");
+        self.compiled.push(' ');
         self.call_inner(func, Some(env.into()), args, None)?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
@@ -415,7 +415,7 @@ impl QbeFunctionBuilder {
         if !func.is_global() {
             return Err(QbeError::NonGlobalCall);
         }
-        self.compiled.push_str("\t");
+        self.compiled.push('\t');
         self.call_inner(func, None, args, Some(va_args))
     }
     pub fn call_va_ret<F, I, A>(&mut self, func: F, args: I, va_args: I, t: QbeType) -> Result<QbeValue>
@@ -427,7 +427,7 @@ impl QbeFunctionBuilder {
         let id = self.local_counter;
         write!(&mut self.compiled, "\t%_{} =", id)?;
         t.gen(&mut self.compiled)?;
-        self.compiled.push_str(" ");
+        self.compiled.push(' ');
         self.call_inner(func, None, args, Some(va_args))?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
@@ -438,7 +438,7 @@ impl QbeFunctionBuilder {
         if !func.is_global() {
             return Err(QbeError::NonGlobalCall);
         }
-        self.compiled.push_str("\t");
+        self.compiled.push('\t');
         self.call_inner(func, Some(env.into()), args, Some(va_args))
     }
     pub fn call_va_env_ret<F, E, I, A>(&mut self, func: F, env: E, args: I, va_args: I, t: QbeType) -> Result<QbeValue>
@@ -450,7 +450,7 @@ impl QbeFunctionBuilder {
         let id = self.local_counter;
         write!(&mut self.compiled, "\t%_{} =", id)?;
         t.gen(&mut self.compiled)?;
-        self.compiled.push_str(" ");
+        self.compiled.push(' ');
         self.call_inner(func, Some(env.into()), args, Some(va_args))?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
@@ -547,7 +547,7 @@ impl QbeFunctionBuilder {
         val.gen(&mut self.compiled)?;
         self.compiled.push_str(", ");
         to.gen(&mut self.compiled)?;
-        self.compiled.push_str("\n");
+        self.compiled.push('\n');
         Ok(())
     }
     pub fn store_t<X, Y>(&mut self, val: X, to: Y, t: QbeType) -> Result<()>
@@ -561,7 +561,7 @@ impl QbeFunctionBuilder {
         val.gen(&mut self.compiled)?;
         self.compiled.push_str(", ");
         to.gen(&mut self.compiled)?;
-        self.compiled.push_str("\n");
+        self.compiled.push('\n');
         Ok(())
     }
     pub fn load<T: Into<QbeValue>>(&mut self, from: T, t: QbeType) -> Result<QbeValue> {
@@ -580,7 +580,7 @@ impl QbeFunctionBuilder {
             _ => unreachable!(),
         };
         from.gen(&mut self.compiled)?;
-        self.compiled.push_str("\n");
+        self.compiled.push('\n');
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t.promote(), id))
     }
@@ -600,7 +600,7 @@ impl QbeFunctionBuilder {
             _ => unreachable!(),
         };
         from.gen(&mut self.compiled)?;
-        self.compiled.push_str("\n");
+        self.compiled.push('\n');
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t.promote(), id))
     }
@@ -624,7 +624,7 @@ impl QbeFunctionBuilder {
         dst.gen(&mut self.compiled)?;
         self.compiled.push_str(", ");
         size.gen(&mut self.compiled)?;
-        self.compiled.push_str("\n");
+        self.compiled.push('\n');
         Ok(())
     }
     unop!{alloc4, val, integer, QbeType::Long}
@@ -659,7 +659,7 @@ impl QbeFunctionBuilder {
         }
         self.compiled.push_str("\tvastart ");
         at.gen(&mut self.compiled)?;
-        self.compiled.push_str("\n");
+        self.compiled.push('\n');
         Ok(())
     }
     pub fn vaarg<T: Into<QbeValue>>(&mut self, from: T, t: QbeType) -> Result<QbeValue> {
@@ -684,7 +684,7 @@ impl QbeFunctionBuilder {
         if let Some(ret) = ret {
             self.compiled.push_str("\tret ");
             ret.gen(&mut self.compiled)?;
-            self.compiled.push_str("\n");
+            self.compiled.push('\n');
         } else {
             self.compiled.push_str("\tret\n");
         }

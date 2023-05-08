@@ -329,8 +329,8 @@ impl QbeContext {
 
     #[cfg(feature = "qbe-command")]
     pub fn into_assembly(self, target: crate::QbeTarget) -> std::io::Result<String> {
-        use std::process::{Command};
-        use std::io::{Write};
+        use std::process::Command;
+        use std::io::Write;
         let temp = tempfile::NamedTempFile::new()?;
         let path = temp.as_ref();
         let mut f = temp.reopen()?;
@@ -339,7 +339,7 @@ impl QbeContext {
             Ok(String::from_utf8_unchecked(
                 Command::new("qbe")
                 .arg("-t").arg(target.as_str())
-                .arg(&path)
+                .arg(path)
                 .output()?
                 .stdout
             ))
