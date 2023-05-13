@@ -6,33 +6,33 @@ use crate::value::{QbeType, QbeValue, QbeLabel, QbeForwardLabel, QbeCodegen};
 use paste::paste;
 
 #[derive(Clone, Debug, Default)]
-pub struct QbeFunctionParams {
+pub struct QbeFunctionParams<'a> {
     env: bool,
     variadic: bool,
-    params: Vec<QbeType>,
+    params: &'a [QbeType],
 }
-impl QbeFunctionParams {
-    pub fn new<I: IntoIterator<Item = QbeType>>(params: I) -> Self {
+impl QbeFunctionParams<'_> {
+    pub fn new(params: &[QbeType]) -> QbeFunctionParams {
         QbeFunctionParams {
             env: false,
             variadic: false,
-            // user defined types are passed as pointers
-            params: params.into_iter().map(|x| x.pointer_ud()).collect(),
+            params: params,
         }
     }
     fn count(&self) -> u32 {
         (self.params.len() + if self.env { 1 } else { 0 }).try_into().unwrap()
     }
 }
-impl QbeCodegen for QbeFunctionParams {
+impl QbeCodegen for QbeFunctionParams<'_> {
     fn gen(&self, d: &mut dyn Write) -> fmt::Result {
         let mut count = 0;
         if self.env {
             d.write_str("env %_0, ")?;
             count += 1;
         }
-        for memb in &self.params {
-            memb.gen(d)?;
+        // user defined types are passed as pointers
+        for memb in self.params {
+            memb.pointer_ud().gen(d)?;
             write!(d, " %_{}, ", count)?;
             count += 1;
         }
@@ -222,7 +222,7 @@ pub struct QbeFunctionBuilder<'a> {
 impl QbeFunctionBuilder<'_> {
     pub(crate) fn new<'a>(params: &'a QbeFunctionParams, names: &'a mut Vec<Pin<Box<str>>>) -> QbeFunctionBuilder<'a> {
         QbeFunctionBuilder {
-            params: &params.params,
+            params: params.params,
             env: params.env,
             variadic: params.variadic,
             local_counter: params.count(),
@@ -256,7 +256,8 @@ impl<'a> QbeFunctionBuilder<'a> {
             Err(QbeError::ArgumentOutOfBounds)
         } else {
             let idx = idx + if self.env { 1 } else { 0 };
-            Ok(QbeValue::Temporary(self.params[idx], idx.try_into().unwrap()))
+            // user-defined types are passed as pointers
+            Ok(QbeValue::Temporary(self.params[idx].pointer_ud(), idx.try_into().unwrap()))
         }
     }
 
