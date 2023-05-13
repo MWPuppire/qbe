@@ -1,4 +1,6 @@
 use std::fmt::Write;
+use std::pin::Pin;
+use std::ops::Deref;
 use crate::{Result, QbeError};
 use crate::value::{QbeValue, QbeData, QbeType, QbeForwardDecl, QbeCodegen};
 use crate::func::{QbeFunctionBuilder, QbeFunctionParams};
@@ -22,7 +24,7 @@ pub struct QbeContext {
     global_counter: u32,
     type_counter: u32,
     compiled: String,
-    names: String,
+    names: Vec<Pin<Box<str>>>,
 }
 
 impl QbeContext {
@@ -59,10 +61,11 @@ impl QbeContext {
         }
         if let Some(name) = opts.export_as {
             writeln!(&mut self.compiled, "export")?;
-            let start = self.names.len();
-            self.names.push('$');
-            self.names.push_str(name);
-            let slice = &self.names[start..self.names.len()];
+            let name = format!("${}", name);
+            let s = Box::into_pin(name.into_boxed_str());
+            let ptr = s.deref() as *const str;
+            self.names.push(s);
+            let slice = unsafe { ptr.as_ref().unwrap() };
             if let Some(align) = opts.align_to {
                 writeln!(&mut self.compiled, "data {} = align {} {{ ", slice, align)?;
             } else {
@@ -70,7 +73,7 @@ impl QbeContext {
             }
             data.gen(&mut self.compiled)?;
             self.compiled.push_str(" }\n");
-            Ok(QbeValue::Named(unsafe { std::mem::transmute(slice) }))
+            Ok(QbeValue::Named(slice))
         } else {
             let id = self.global_counter;
             if let Some(align) = opts.align_to {
@@ -127,16 +130,17 @@ impl QbeContext {
         }
         if let Some(name) = opts.export_as {
             writeln!(&mut self.compiled, "export")?;
-            let start = self.names.len();
-            self.names.push('$');
-            self.names.push_str(name);
-            let slice = &self.names[start..self.names.len()];
+            let name = format!("${}", name);
+            let s = Box::into_pin(name.into_boxed_str());
+            let ptr = s.deref() as *const str;
+            self.names.push(s);
+            let slice = unsafe { ptr.as_ref().unwrap() };
             if let Some(align) = opts.align_to {
                 writeln!(&mut self.compiled, "data {} = align {} {{ z {} }}", slice, align, size)?;
             } else {
                 writeln!(&mut self.compiled, "data {} = {{ z {} }}", slice, size)?;
             }
-            Ok(QbeValue::Named(unsafe { std::mem::transmute(slice) }))
+            Ok(QbeValue::Named(slice))
         } else {
             let id = self.global_counter;
             if let Some(align) = opts.align_to {
@@ -168,11 +172,11 @@ impl QbeContext {
         Ok(QbeValue::Global(id))
     }
     pub fn global_symbol(&mut self, sym: &str) -> Result<QbeValue> {
-        let start = self.names.len();
-        self.names.push('$');
-        self.names.push_str(sym);
-        let slice = &self.names[start..self.names.len()];
-        Ok(QbeValue::Named(unsafe { std::mem::transmute(slice) }))
+        let name = format!("${}", sym);
+        let s = Box::into_pin(name.into_boxed_str());
+        let ptr = s.deref() as *const str;
+        self.names.push(s);
+        Ok(QbeValue::Named(unsafe { ptr.as_ref().unwrap() }))
     }
 
     // type definitions
@@ -210,44 +214,61 @@ impl QbeContext {
     }
 
     // function definition
-    pub fn function<F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue>>>(&mut self, params: &QbeFunctionParams, builder: F) -> Result<QbeValue> {
-        let mut f = QbeFunctionBuilder::new(params);
-        let ret = builder(&mut f)?;
+    pub fn function<'a, F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue<'a>>>>(&'a mut self, params: &'a QbeFunctionParams, builder: F) -> Result<QbeValue> {
+        let mut f = QbeFunctionBuilder::new(params, &mut self.names);
+        let out_typ = f.build(builder)?;
+
         let id = self.global_counter;
-        if let Some(ret) = ret {
+        if let Some(typ) = out_typ {
             self.compiled.push_str("function ");
-            ret.type_of().gen(&mut self.compiled)?;
+            typ.gen(&mut self.compiled)?;
             write!(&mut self.compiled, " $_{}(", id)?;
         } else {
             write!(&mut self.compiled, "function $_{}(", id)?;
         }
         params.gen(&mut self.compiled)?;
         self.compiled.push_str(") {\n");
-        self.compiled.push_str(&f.compile(ret)?);
+        self.compiled.push_str(&f.compile());
         self.compiled.push_str("}\n");
         self.global_counter += 1;
         Ok(QbeValue::Global(id))
     }
-    pub fn function_at<F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue>>>(&mut self, at: QbeForwardDecl, params: &QbeFunctionParams, builder: F) -> Result<QbeValue> {
+    pub fn function_at<'a, F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue<'a>>>>(&'a mut self, at: QbeForwardDecl, params: &'a QbeFunctionParams, builder: F) -> Result<QbeValue> {
         let id = at.0;
-        let mut f = QbeFunctionBuilder::new(params);
-        let ret = builder(&mut f)?;
-        if let Some(ret) = ret {
+        let mut f = QbeFunctionBuilder::new(params, &mut self.names);
+        let out_typ = f.build(builder)?;
+
+        if let Some(typ) = out_typ {
             self.compiled.push_str("function ");
-            ret.type_of().gen(&mut self.compiled)?;
+            typ.gen(&mut self.compiled)?;
             write!(&mut self.compiled, " $_{}(", id)?;
         } else {
             write!(&mut self.compiled, "function $_{}(", id)?;
         }
         params.gen(&mut self.compiled)?;
         self.compiled.push_str(") {\n");
-        self.compiled.push_str(&f.compile(ret)?);
+        self.compiled.push_str(&f.compile());
         self.compiled.push_str("}\n");
         Ok(QbeValue::Global(id))
     }
-    pub fn function_ext<F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue>>>(&mut self, params: &QbeFunctionParams, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
-        let mut f = QbeFunctionBuilder::new(params);
-        let ret = builder(&mut f)?;
+    pub fn function_ext<'a, F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue<'a>>>>(&'a mut self, params: &'a QbeFunctionParams, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
+        let out_value = if let Some(name) = opts.export_as {
+            let name = format!("${}", name);
+            let s = Box::into_pin(name.into_boxed_str());
+            let ptr = s.deref() as *const str;
+            self.names.push(s);
+            let slice = unsafe { ptr.as_ref().unwrap() };
+            QbeValue::Named(slice)
+        } else {
+            let id = self.global_counter;
+            self.global_counter += 1;
+            QbeValue::Global(id)
+        };
+
+        let mut f = QbeFunctionBuilder::new(params, &mut self.names);
+        let out_typ = f.build(builder)?;
+        let compiled = f.compile();
+
         if opts.thread_local {
             writeln!(&mut self.compiled, "thread")?;
         }
@@ -255,47 +276,30 @@ impl QbeContext {
             let flags = opts.section_flags.unwrap_or("");
             writeln!(&mut self.compiled, "section {} {}", sec, flags)?;
         }
-        let out_value = if let Some(name) = opts.export_as {
+        if opts.export_as.is_some() {
             writeln!(&mut self.compiled, "export")?;
-            let start = self.names.len();
-            self.names.push('$');
-            self.names.push_str(name);
-            let slice = &self.names[start..self.names.len()];
-            if let Some(ret) = ret {
-                self.compiled.push_str("function ");
-                ret.type_of().gen(&mut self.compiled)?;
-                write!(&mut self.compiled, " {}(", slice)?;
-            } else {
-                write!(&mut self.compiled, "function {}(", slice)?;
-            }
-            params.gen(&mut self.compiled)?;
-            self.compiled.push_str(") {\n");
-            QbeValue::Named(unsafe { std::mem::transmute(slice) })
-        } else {
-            let id = self.global_counter;
-            if let Some(ret) = ret {
-                self.compiled.push_str("function ");
-                ret.type_of().gen(&mut self.compiled)?;
-                write!(&mut self.compiled, " $_{}(", id)?;
-            } else {
-                write!(&mut self.compiled, "function $_{}(", id)?;
-            }
-            params.gen(&mut self.compiled)?;
-            self.compiled.push_str(") {\n");
-            self.global_counter += 1;
-            QbeValue::Global(id)
-        };
-        self.compiled.push_str(&f.compile(ret)?);
+        }
+        self.compiled.push_str("function ");
+        if let Some(typ) = out_typ {
+            typ.gen(&mut self.compiled)?;
+            self.compiled.push(' ');
+        }
+        out_value.gen(&mut self.compiled)?;
+        self.compiled.push('(');
+        params.gen(&mut self.compiled)?;
+        self.compiled.push_str(") {\n");
+        self.compiled.push_str(&compiled);
         self.compiled.push_str("}\n");
         Ok(out_value)
     }
-    pub fn function_at_ext<F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue>>>(&mut self, at: QbeForwardDecl, params: &QbeFunctionParams, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
+    pub fn function_at_ext<'a, F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue<'a>>>>(&'a mut self, at: QbeForwardDecl, params: &'a QbeFunctionParams, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
         let id = at.0;
         if opts.export_as.is_some() {
             return Err(QbeError::ForwardDeclareName);
         }
-        let mut f = QbeFunctionBuilder::new(params);
-        let ret = builder(&mut f)?;
+        let mut f = QbeFunctionBuilder::new(params, &mut self.names);
+        let out_typ = f.build(builder)?;
+
         if opts.thread_local {
             writeln!(&mut self.compiled, "thread")?;
         }
@@ -303,16 +307,16 @@ impl QbeContext {
             let flags = opts.section_flags.unwrap_or("");
             writeln!(&mut self.compiled, "section {} {}", sec, flags)?;
         }
-        if let Some(ret) = ret {
+        if let Some(typ) = out_typ {
             self.compiled.push_str("function ");
-            ret.type_of().gen(&mut self.compiled)?;
+            typ.gen(&mut self.compiled)?;
             write!(&mut self.compiled, " $_{}(", id)?;
         } else {
             write!(&mut self.compiled, "function $_{}(", id)?;
         }
         params.gen(&mut self.compiled)?;
         self.compiled.push_str(") {\n");
-        self.compiled.push_str(&f.compile(ret)?);
+        self.compiled.push_str(&f.compile());
         self.compiled.push_str("}\n");
         Ok(QbeValue::Global(id))
     }

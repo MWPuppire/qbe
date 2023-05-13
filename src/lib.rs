@@ -33,10 +33,10 @@ pub enum QbeError {
     NonLocalRedefinition,
     #[error("reassignment must use only a single expression returning a local")]
     ReassignmentSingleExpr,
-    #[error("no return found in a function with a return type")]
-    NoReturn,
     #[error("cannot use a user-defined type in that context")]
     NotBasic,
+    #[error("returns in a function disagree on return type")]
+    DisagreeingReturns,
 }
 
 pub type Result<T> = std::result::Result<T, QbeError>;
