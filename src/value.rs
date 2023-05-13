@@ -1,8 +1,8 @@
-use std::fmt;
+use std::fmt::{self, Write};
 use crate::{Result, QbeError};
 
-pub(crate) trait QbeCodegen {
-    fn gen(&self, dest: &mut dyn fmt::Write) -> fmt::Result;
+pub(crate) trait QbeCodegen<Writer: Write> {
+    fn gen(&self, dest: &mut Writer) -> fmt::Result;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,8 +83,8 @@ impl QbeType {
         matches!(self, Self::Long | Self::UserDefined(_))
     }
 }
-impl QbeCodegen for QbeType {
-    fn gen(&self, d: &mut dyn fmt::Write) -> fmt::Result {
+impl<W: Write> QbeCodegen<W> for QbeType {
+    fn gen(&self, d: &mut W) -> fmt::Result {
         match self {
             Self::Word            => d.write_str("w"),
             Self::Long            => d.write_str("l"),
@@ -108,8 +108,8 @@ pub enum QbeData<'a> {
     Named(&'a str),
     OffsetNamed(&'a str, u64),
 }
-impl<'a> QbeCodegen for QbeData<'a> {
-    fn gen(&self, d: &mut dyn fmt::Write) -> fmt::Result {
+impl<W: Write> QbeCodegen<W> for QbeData<'_> {
+    fn gen(&self, d: &mut W) -> fmt::Result {
         match self {
             Self::String(s)                 => write!(d, "\"{}\"", s.escape_default()),
             Self::Global(id)                => write!(d, "$_{}", id),
@@ -195,8 +195,8 @@ impl From<&QbeForwardDecl> for QbeData<'_> {
 // than the one that created it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct QbeLabel(pub(crate) u32);
-impl QbeCodegen for QbeLabel {
-    fn gen(&self, d: &mut dyn fmt::Write) -> fmt::Result {
+impl<W: Write> QbeCodegen<W> for QbeLabel {
+    fn gen(&self, d: &mut W) -> fmt::Result {
         write!(d, "@_{}", self.0)
     }
 }
@@ -248,8 +248,8 @@ impl<'a> QbeValue<'a> {
         matches!(self, Self::Global(_) | Self::Named(_))
     }
 }
-impl QbeCodegen for QbeValue<'_> {
-    fn gen(&self, d: &mut dyn fmt::Write) -> fmt::Result {
+impl<W: Write> QbeCodegen<W> for QbeValue<'_> {
+    fn gen(&self, d: &mut W) -> fmt::Result {
         match self {
             Self::Global(id)         => write!(d, "$_{}", id),
             Self::Temporary(_, id)   => write!(d, "%_{}", id),

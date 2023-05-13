@@ -23,8 +23,8 @@ impl QbeFunctionParams<'_> {
         (self.params.len() + if self.env { 1 } else { 0 }).try_into().unwrap()
     }
 }
-impl QbeCodegen for QbeFunctionParams<'_> {
-    fn gen(&self, d: &mut dyn Write) -> fmt::Result {
+impl<W: Write> QbeCodegen<W> for QbeFunctionParams<'_> {
+    fn gen(&self, d: &mut W) -> fmt::Result {
         let mut count = 0;
         if self.env {
             d.write_str("env %_0, ")?;
