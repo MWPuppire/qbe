@@ -12,7 +12,7 @@ pub struct QbeFunctionParams {
     params: Vec<QbeType>,
 }
 impl QbeFunctionParams {
-    fn new<I: IntoIterator<Item = QbeType>>(params: I) -> Self {
+    pub fn new<I: IntoIterator<Item = QbeType>>(params: I) -> Self {
         QbeFunctionParams {
             env: false,
             variadic: false,
