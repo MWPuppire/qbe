@@ -705,13 +705,6 @@ impl<'a> QbeFunctionBuilder<'a> {
     pub(crate) fn build<F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue<'a>>>>(&mut self, builder: F) -> Result<Option<QbeType>> {
         let ret = builder(self)?;
         let ret_typ = ret.map(|x| x.type_of().promote());
-        let mut ret_str = String::from("\tret ");
-        if let Some(ret) = ret {
-            ret.gen(&mut ret_str)?;
-            ret_str.push('\n');
-        } else {
-            ret_str.push('\n');
-        }
 
         for i in self.returned.iter() {
             if *i != ret_typ {
@@ -719,8 +712,11 @@ impl<'a> QbeFunctionBuilder<'a> {
             }
         }
         // label the end block in case anything uses it as a destination
-        self.compiled.push_str("@_1\n");
-        self.compiled.push_str(&ret_str);
+        self.compiled.push_str("@_1\n\tret ");
+        if let Some(ret) = ret {
+            ret.gen(&mut self.compiled)?;
+        }
+        self.compiled.push('\n');
         Ok(ret_typ)
     }
     pub(crate) fn compile(self) -> String {
