@@ -115,7 +115,7 @@ impl<W: Write> QbeCodegen<W> for QbeData<'_> {
             Self::Global(id)                => write!(d, "$_{}", id),
             Self::OffsetGlobal(id, offset)  => write!(d, "$_{}+{}", id, offset),
             Self::Constant(typ, val)        => write!(d, "{} {}", typ.basic_name(), val),
-            Self::Named(name)               => d.write_str(name),
+            Self::Named(name)               => write!(d, "${}", name),
             Self::OffsetNamed(name, offset) => write!(d, "{}+{}", name, offset),
         }
     }
@@ -210,28 +210,32 @@ pub enum QbeValue<'a> {
     Temporary(QbeType, u32),
     Constant(QbeType, u64),
     Named(&'a str),
+    ThreadLocalNamed(&'a str),
 }
 impl<'a> QbeValue<'a> {
     pub fn type_of(&self) -> QbeType {
         match self {
-            Self::Global(_)         => QbeType::Long,
-            Self::Temporary(typ, _) => *typ,
-            Self::Constant(typ, _)  => *typ,
-            Self::Named(_)          => QbeType::Long,
+            Self::Global(_)           => QbeType::Long,
+            Self::Temporary(typ, _)   => *typ,
+            Self::Constant(typ, _)    => *typ,
+            Self::Named(_)            => QbeType::Long,
+            Self::ThreadLocalNamed(_) => QbeType::Long,
         }
     }
     pub fn common_type(&self, with: &'a QbeValue) -> Result<QbeType> {
         let typ = match self {
-            Self::Global(_)         => QbeType::Long,
-            Self::Temporary(typ, _) => *typ,
-            Self::Constant(_, _)    => return Ok(with.type_of()),
-            Self::Named(_)          => QbeType::Long,
+            Self::Global(_)           => QbeType::Long,
+            Self::Temporary(typ, _)   => *typ,
+            Self::Constant(_, _)      => return Ok(with.type_of()),
+            Self::Named(_)            => QbeType::Long,
+            Self::ThreadLocalNamed(_) => QbeType::Long,
         }.promote();
         let other = match with {
-            Self::Global(_)         => QbeType::Long,
-            Self::Temporary(typ, _) => *typ,
-            Self::Constant(_, _)    => return Ok(typ),
-            Self::Named(_)          => QbeType::Long,
+            Self::Global(_)           => QbeType::Long,
+            Self::Temporary(typ, _)   => *typ,
+            Self::Constant(_, _)      => return Ok(typ),
+            Self::Named(_)            => QbeType::Long,
+            Self::ThreadLocalNamed(_) => QbeType::Long,
         }.promote();
         if typ == other {
             return Ok(typ);
@@ -245,16 +249,17 @@ impl<'a> QbeValue<'a> {
     pub(crate) fn is_global(&self) -> bool {
         // how the code is currently written, only global symbols can be `Named`
         // if this changes, this function will need to change accordingly
-        matches!(self, Self::Global(_) | Self::Named(_))
+        matches!(self, Self::Global(_) | Self::Named(_) | Self::ThreadLocalNamed(_))
     }
 }
 impl<W: Write> QbeCodegen<W> for QbeValue<'_> {
     fn gen(&self, d: &mut W) -> fmt::Result {
         match self {
-            Self::Global(id)         => write!(d, "$_{}", id),
-            Self::Temporary(_, id)   => write!(d, "%_{}", id),
-            Self::Constant(_, val)   => write!(d, "{}", val),
-            Self::Named(name)        => d.write_str(name),
+            Self::Global(id)             => write!(d, "$_{}", id),
+            Self::Temporary(_, id)       => write!(d, "%_{}", id),
+            Self::Constant(_, val)       => write!(d, "{}", val),
+            Self::Named(name)            => write!(d, "${}", name),
+            Self::ThreadLocalNamed(name) => write!(d, "thread ${}", name),
         }
     }
 }

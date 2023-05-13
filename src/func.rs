@@ -285,18 +285,16 @@ impl<'a> QbeFunctionBuilder<'a> {
     }
 
     pub fn global_symbol(&mut self, sym: &str) -> Result<QbeValue<'a>> {
-        let name = format!("${}", sym);
-        let s = Box::into_pin(name.into_boxed_str());
+        let s = Box::into_pin(Box::<str>::from(sym));
         let ptr = s.deref() as *const str;
         self.names.push(s);
         Ok(QbeValue::Named(unsafe { ptr.as_ref().unwrap() }))
     }
     pub fn thread_local_symbol(&mut self, sym: &str) -> Result<QbeValue<'a>> {
-        let name = format!("thread ${}", sym);
-        let s = Box::into_pin(name.into_boxed_str());
+        let s = Box::into_pin(Box::<str>::from(sym));
         let ptr = s.deref() as *const str;
         self.names.push(s);
-        Ok(QbeValue::Named(unsafe { ptr.as_ref().unwrap() }))
+        Ok(QbeValue::ThreadLocalNamed(unsafe { ptr.as_ref().unwrap() }))
     }
 
     pub fn block(&mut self) -> Result<QbeLabel> {

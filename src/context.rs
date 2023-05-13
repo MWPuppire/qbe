@@ -61,15 +61,14 @@ impl QbeContext {
         }
         if let Some(name) = opts.export_as {
             writeln!(&mut self.compiled, "export")?;
-            let name = format!("${}", name);
-            let s = Box::into_pin(name.into_boxed_str());
+            let s = Box::into_pin(Box::<str>::from(name));
             let ptr = s.deref() as *const str;
             self.names.push(s);
             let slice = unsafe { ptr.as_ref().unwrap() };
             if let Some(align) = opts.align_to {
-                writeln!(&mut self.compiled, "data {} = align {} {{ ", slice, align)?;
+                writeln!(&mut self.compiled, "data ${} = align {} {{ ", slice, align)?;
             } else {
-                writeln!(&mut self.compiled, "data {} = {{ ", slice)?;
+                writeln!(&mut self.compiled, "data ${} = {{ ", slice)?;
             }
             data.gen(&mut self.compiled)?;
             self.compiled.push_str(" }\n");
@@ -130,15 +129,14 @@ impl QbeContext {
         }
         if let Some(name) = opts.export_as {
             writeln!(&mut self.compiled, "export")?;
-            let name = format!("${}", name);
-            let s = Box::into_pin(name.into_boxed_str());
+            let s = Box::into_pin(Box::<str>::from(name));
             let ptr = s.deref() as *const str;
             self.names.push(s);
             let slice = unsafe { ptr.as_ref().unwrap() };
             if let Some(align) = opts.align_to {
-                writeln!(&mut self.compiled, "data {} = align {} {{ z {} }}", slice, align, size)?;
+                writeln!(&mut self.compiled, "data ${} = align {} {{ z {} }}", slice, align, size)?;
             } else {
-                writeln!(&mut self.compiled, "data {} = {{ z {} }}", slice, size)?;
+                writeln!(&mut self.compiled, "data ${} = {{ z {} }}", slice, size)?;
             }
             Ok(QbeValue::Named(slice))
         } else {
@@ -172,8 +170,7 @@ impl QbeContext {
         Ok(QbeValue::Global(id))
     }
     pub fn global_symbol(&mut self, sym: &str) -> Result<QbeValue> {
-        let name = format!("${}", sym);
-        let s = Box::into_pin(name.into_boxed_str());
+        let s = Box::into_pin(Box::<str>::from(sym));
         let ptr = s.deref() as *const str;
         self.names.push(s);
         Ok(QbeValue::Named(unsafe { ptr.as_ref().unwrap() }))
@@ -253,8 +250,7 @@ impl QbeContext {
     }
     pub fn function_ext<'a, F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue<'a>>>>(&'a mut self, params: &'a QbeFunctionParams, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
         let out_value = if let Some(name) = opts.export_as {
-            let name = format!("${}", name);
-            let s = Box::into_pin(name.into_boxed_str());
+            let s = Box::into_pin(Box::<str>::from(name));
             let ptr = s.deref() as *const str;
             self.names.push(s);
             let slice = unsafe { ptr.as_ref().unwrap() };
