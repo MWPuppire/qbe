@@ -1,7 +1,16 @@
-#[macro_use]
-extern crate derive_builder;
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(feature = "std")]
+extern crate std;
+
+#[cfg(feature = "thiserror")]
 #[macro_use]
 extern crate thiserror;
+
+#[macro_use]
+extern crate derive_builder;
+
+extern crate cfg_if;
 
 mod value;
 mod func;
@@ -11,35 +20,42 @@ pub use value::*;
 pub use func::*;
 pub use context::{QbeContext, QbeDeclBuilder};
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
+#[cfg_attr(feature = "thiserror", derive(Error))]
 pub enum QbeError {
-    #[error("unknown error while compiling")]
-    CompileError(#[from] std::fmt::Error),
-    #[error("expected {0} parameter")]
+    #[cfg_attr(feature = "thiserror", error("unknown error while compiling"))]
+    CompileError(#[cfg_attr(feature = "thiserror", from)] core::fmt::Error),
+    #[cfg_attr(feature = "thiserror", error("expected {0} parameter"))]
     IncorrectType(&'static str),
-    #[error("argument out of bounds")]
+    #[cfg_attr(feature = "thiserror", error("argument out of bounds"))]
     ArgumentOutOfBounds,
-    #[error("this function doesn't have an env argument")]
+    #[cfg_attr(feature = "thiserror", error("this function doesn't have an env argument"))]
     NoEnvArgument,
-    #[error("cannot use `export_as` with a forward declaration")]
+    #[cfg_attr(feature = "thiserror", error("cannot use `export_as` with a forward declaration"))]
     ForwardDeclareName,
-    #[error("cannot infer a common type")]
+    #[cfg_attr(feature = "thiserror", error("cannot infer a common type"))]
     CannotInferType,
-    #[error("cannot call anything other than a global symbol")]
+    #[cfg_attr(feature = "thiserror", error("cannot call anything other than a global symbol"))]
     NonGlobalCall,
-    #[error("cannot use `vastart` and `vaarg` outside a variadic function")]
+    #[cfg_attr(feature = "thiserror", error("cannot use `vastart` and `vaarg` outside a variadic function"))]
     NonVariadic,
-    #[error("cannot reassign to anything other than a local variable")]
+    #[cfg_attr(feature = "thiserror", error("cannot reassign to anything other than a local variable"))]
     NonLocalRedefinition,
-    #[error("reassignment must use only a single expression returning a local")]
+    #[cfg_attr(feature = "thiserror", error("reassignment must use only a single expression returning a local"))]
     ReassignmentSingleExpr,
-    #[error("cannot use a user-defined type in that context")]
+    #[cfg_attr(feature = "thiserror", error("cannot use a user-defined type in that context"))]
     NotBasic,
-    #[error("returns in a function disagree on return type")]
+    #[cfg_attr(feature = "thiserror", error("returns in a function disagree on return type"))]
     DisagreeingReturns,
 }
+#[cfg(not(feature = "thiserror"))]
+impl From<core::fmt::Error> for QbeError {
+    fn from(item: core::fmt::Error) -> Self {
+        QbeError::CompileError(item)
+    }
+}
 
-pub type Result<T> = std::result::Result<T, QbeError>;
+pub type Result<T> = core::result::Result<T, QbeError>;
 
 #[cfg(feature = "qbe-command")]
 pub enum QbeTarget {

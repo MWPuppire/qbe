@@ -1,11 +1,15 @@
-use std::fmt::Write;
-use std::pin::Pin;
-use std::ops::Deref;
+use core::fmt::Write;
+use core::borrow::Borrow;
+
+#[cfg(feature = "non-static-names")]
+use std::{pin::Pin, ops::Deref, vec::Vec, boxed::Box};
+
 use crate::{Result, QbeError};
 use crate::value::{QbeValue, QbeData, QbeType, QbeForwardDecl, QbeCodegen};
 use crate::func::{QbeFunctionBuilder, QbeFunctionParams};
 
-#[derive(Builder, Clone, Debug)]
+#[derive(Clone, Debug, Builder)]
+#[cfg_attr(not(feature = "std"), builder(no_std))]
 pub struct QbeDecl<'a> {
     #[builder(setter(strip_option), default)]
     section: Option<&'a str>,
@@ -14,20 +18,26 @@ pub struct QbeDecl<'a> {
     #[builder(setter(strip_option), default)]
     thread_local: bool,
     #[builder(setter(strip_option), default)]
-    export_as: Option<&'a str>,
-    #[builder(setter(strip_option), default)]
     align_to: Option<u64>,
+
+    #[cfg(feature = "non-static-names")]
+    #[builder(setter(strip_option), default)]
+    export_as: Option<&'a str>,
+    #[cfg(not(feature = "non-static-names"))]
+    #[builder(setter(strip_option), default)]
+    export_as: Option<&'static str>,
 }
 
 #[derive(Clone, Default, Debug)]
-pub struct QbeContext {
+pub struct QbeContext<Dst: Write + Default + Borrow<str>> {
     global_counter: u32,
     type_counter: u32,
-    compiled: String,
+    compiled: Dst,
+    #[cfg(feature = "non-static-names")]
     names: Vec<Pin<Box<str>>>,
 }
 
-impl QbeContext {
+impl<Dst: Write + Default + Borrow<str>> QbeContext<Dst> {
     pub fn new() -> Self {
         QbeContext::default()
     }
@@ -38,7 +48,7 @@ impl QbeContext {
         let id = self.global_counter;
         write!(&mut self.compiled, "data $_{} = {{ ", id)?;
         data.gen(&mut self.compiled)?;
-        self.compiled.push_str(" }\n");
+        self.compiled.write_str(" }\n")?;
         self.global_counter += 1;
         Ok(QbeValue::Global(id))
     }
@@ -47,7 +57,7 @@ impl QbeContext {
         let id = at.0;
         writeln!(&mut self.compiled, "data $_{} = {{ ", id)?;
         data.gen(&mut self.compiled)?;
-        self.compiled.push_str(" }\n");
+        self.compiled.write_str(" }\n")?;
         Ok(QbeValue::Global(id))
     }
     pub fn global_ext<T: for<'a> Into<QbeData<'a>>>(&mut self, val: T, opts: &QbeDecl) -> Result<QbeValue> {
@@ -61,18 +71,22 @@ impl QbeContext {
         }
         if let Some(name) = opts.export_as {
             writeln!(&mut self.compiled, "export")?;
-            let s = Box::into_pin(Box::<str>::from(name));
-            let ptr = s.deref() as *const str;
-            self.names.push(s);
-            let slice = unsafe { ptr.as_ref().unwrap() };
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "non-static-names")] {
+                    let s = Box::into_pin(Box::<str>::from(name));
+                    let ptr = s.deref() as *const str;
+                    self.names.push(s);
+                    let name = unsafe { ptr.as_ref().unwrap() };
+                }
+            }
             if let Some(align) = opts.align_to {
-                writeln!(&mut self.compiled, "data ${} = align {} {{ ", slice, align)?;
+                writeln!(&mut self.compiled, "data ${} = align {} {{ ", name, align)?;
             } else {
-                writeln!(&mut self.compiled, "data ${} = {{ ", slice)?;
+                writeln!(&mut self.compiled, "data ${} = {{ ", name)?;
             }
             data.gen(&mut self.compiled)?;
-            self.compiled.push_str(" }\n");
-            Ok(QbeValue::Named(slice))
+            self.compiled.write_str(" }\n")?;
+            Ok(QbeValue::Named(name))
         } else {
             let id = self.global_counter;
             if let Some(align) = opts.align_to {
@@ -81,7 +95,7 @@ impl QbeContext {
                 writeln!(&mut self.compiled, "data $_{} = {{ ", id)?;
             }
             data.gen(&mut self.compiled)?;
-            self.compiled.push_str(" }\n");
+            self.compiled.write_str(" }\n")?;
             self.global_counter += 1;
             Ok(QbeValue::Global(id))
         }
@@ -105,7 +119,7 @@ impl QbeContext {
             writeln!(&mut self.compiled, "data $_{} = {{ ", id)?;
         }
         data.gen(&mut self.compiled)?;
-        self.compiled.push_str(" }\n");
+        self.compiled.write_str(" }\n")?;
         Ok(QbeValue::Global(id))
     }
     pub fn global_zeroed(&mut self, size: u64) -> Result<QbeValue> {
@@ -129,16 +143,20 @@ impl QbeContext {
         }
         if let Some(name) = opts.export_as {
             writeln!(&mut self.compiled, "export")?;
-            let s = Box::into_pin(Box::<str>::from(name));
-            let ptr = s.deref() as *const str;
-            self.names.push(s);
-            let slice = unsafe { ptr.as_ref().unwrap() };
-            if let Some(align) = opts.align_to {
-                writeln!(&mut self.compiled, "data ${} = align {} {{ z {} }}", slice, align, size)?;
-            } else {
-                writeln!(&mut self.compiled, "data ${} = {{ z {} }}", slice, size)?;
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "non-static-names")] {
+                    let s = Box::into_pin(Box::<str>::from(name));
+                    let ptr = s.deref() as *const str;
+                    self.names.push(s);
+                    let name = unsafe { ptr.as_ref().unwrap() };
+                }
             }
-            Ok(QbeValue::Named(slice))
+            if let Some(align) = opts.align_to {
+                writeln!(&mut self.compiled, "data ${} = align {} {{ z {} }}", name, align, size)?;
+            } else {
+                writeln!(&mut self.compiled, "data ${} = {{ z {} }}", name, size)?;
+            }
+            Ok(QbeValue::Named(name))
         } else {
             let id = self.global_counter;
             if let Some(align) = opts.align_to {
@@ -169,11 +187,16 @@ impl QbeContext {
         }
         Ok(QbeValue::Global(id))
     }
-    pub fn global_symbol(&mut self, sym: &str) -> Result<QbeValue> {
+    #[cfg(feature = "non-static-names")]
+    pub fn global_symbol(&mut self, sym: &str) -> QbeValue {
         let s = Box::into_pin(Box::<str>::from(sym));
         let ptr = s.deref() as *const str;
         self.names.push(s);
-        Ok(QbeValue::Named(unsafe { ptr.as_ref().unwrap() }))
+        QbeValue::Named(unsafe { ptr.as_ref().unwrap() })
+    }
+    #[cfg(not(feature = "non-static-names"))]
+    pub fn global_symbol(&mut self, sym: &'static str) -> QbeValue {
+        QbeValue::Named(sym)
     }
 
     // type definitions
@@ -192,7 +215,7 @@ impl QbeContext {
             }
             write!(&mut self.compiled, "{}, ", memb.basic_name())?;
         }
-        self.compiled.push_str("}\n");
+        self.compiled.write_str("}\n")?;
         self.type_counter += 1;
         Ok(QbeType::UserDefined(id))
     }
@@ -205,63 +228,80 @@ impl QbeContext {
             }
             write!(&mut self.compiled, "{}, ", memb.basic_name())?;
         }
-        self.compiled.push_str("}\n");
+        self.compiled.write_str("}\n")?;
         self.type_counter += 1;
         Ok(QbeType::UserDefined(id))
     }
 
     // function definition
-    pub fn function<'a, F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue<'a>>>>(&'a mut self, params: &'a QbeFunctionParams, builder: F) -> Result<QbeValue> {
-        let mut f = QbeFunctionBuilder::new(params, &mut self.names);
+    pub fn function<'a, F: FnOnce(&mut QbeFunctionBuilder<Dst>) -> Result<Option<QbeValue<'a>>>>(&'a mut self, params: &'a QbeFunctionParams, builder: F) -> Result<QbeValue> {
+        #[cfg(feature = "non-static-names")]
+        let mut f = QbeFunctionBuilder::try_new(Dst::default(), params, &mut self.names)?;
+        #[cfg(not(feature = "non-static-names"))]
+        let mut f = QbeFunctionBuilder::try_new(Dst::default(), params)?;
+
         let out_typ = f.build(builder)?;
 
         let id = self.global_counter;
         if let Some(typ) = out_typ {
-            self.compiled.push_str("function ");
+            self.compiled.write_str("function ")?;
             typ.gen(&mut self.compiled)?;
             write!(&mut self.compiled, " $_{}(", id)?;
         } else {
             write!(&mut self.compiled, "function $_{}(", id)?;
         }
         params.gen(&mut self.compiled)?;
-        self.compiled.push_str(") {\n");
-        self.compiled.push_str(&f.compile());
-        self.compiled.push_str("}\n");
+        self.compiled.write_str(") {\n")?;
+        self.compiled.write_str(f.compile().borrow())?;
+        self.compiled.write_str("}\n")?;
         self.global_counter += 1;
         Ok(QbeValue::Global(id))
     }
-    pub fn function_at<'a, F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue<'a>>>>(&'a mut self, at: QbeForwardDecl, params: &'a QbeFunctionParams, builder: F) -> Result<QbeValue> {
-        let id = at.0;
-        let mut f = QbeFunctionBuilder::new(params, &mut self.names);
+    pub fn function_at<'a, F: FnOnce(&mut QbeFunctionBuilder<Dst>) -> Result<Option<QbeValue<'a>>>>(&'a mut self, at: QbeForwardDecl, params: &'a QbeFunctionParams, builder: F) -> Result<QbeValue> {
+        #[cfg(feature = "non-static-names")]
+        let mut f = QbeFunctionBuilder::try_new(Dst::default(), params, &mut self.names)?;
+        #[cfg(not(feature = "non-static-names"))]
+        let mut f = QbeFunctionBuilder::try_new(Dst::default(), params)?;
+
         let out_typ = f.build(builder)?;
 
+        let id = at.0;
         if let Some(typ) = out_typ {
-            self.compiled.push_str("function ");
+            self.compiled.write_str("function ")?;
             typ.gen(&mut self.compiled)?;
             write!(&mut self.compiled, " $_{}(", id)?;
         } else {
             write!(&mut self.compiled, "function $_{}(", id)?;
         }
         params.gen(&mut self.compiled)?;
-        self.compiled.push_str(") {\n");
-        self.compiled.push_str(&f.compile());
-        self.compiled.push_str("}\n");
+        self.compiled.write_str(") {\n")?;
+        self.compiled.write_str(f.compile().borrow())?;
+        self.compiled.write_str("}\n")?;
         Ok(QbeValue::Global(id))
     }
-    pub fn function_ext<'a, F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue<'a>>>>(&'a mut self, params: &'a QbeFunctionParams, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
+    pub fn function_ext<'a, F: FnOnce(&mut QbeFunctionBuilder<Dst>) -> Result<Option<QbeValue<'a>>>>(&'a mut self, params: &'a QbeFunctionParams, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
         let out_value = if let Some(name) = opts.export_as {
-            let s = Box::into_pin(Box::<str>::from(name));
-            let ptr = s.deref() as *const str;
-            self.names.push(s);
-            let slice = unsafe { ptr.as_ref().unwrap() };
-            QbeValue::Named(slice)
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "non-static-names")] {
+                    let s = Box::into_pin(Box::<str>::from(name));
+                    let ptr = s.deref() as *const str;
+                    self.names.push(s);
+                    QbeValue::Named(unsafe { ptr.as_ref().unwrap() })
+                } else {
+                    QbeValue::Named(name)
+                }
+            }
         } else {
             let id = self.global_counter;
             self.global_counter += 1;
             QbeValue::Global(id)
         };
 
-        let mut f = QbeFunctionBuilder::new(params, &mut self.names);
+        #[cfg(feature = "non-static-names")]
+        let mut f = QbeFunctionBuilder::try_new(Dst::default(), params, &mut self.names)?;
+        #[cfg(not(feature = "non-static-names"))]
+        let mut f = QbeFunctionBuilder::try_new(Dst::default(), params)?;
+
         let out_typ = f.build(builder)?;
         let compiled = f.compile();
 
@@ -275,27 +315,32 @@ impl QbeContext {
         if opts.export_as.is_some() {
             writeln!(&mut self.compiled, "export")?;
         }
-        self.compiled.push_str("function ");
+        self.compiled.write_str("function ")?;
         if let Some(typ) = out_typ {
             typ.gen(&mut self.compiled)?;
-            self.compiled.push(' ');
+            self.compiled.write_char(' ')?;
         }
         out_value.gen(&mut self.compiled)?;
-        self.compiled.push('(');
+        self.compiled.write_char('(')?;
         params.gen(&mut self.compiled)?;
-        self.compiled.push_str(") {\n");
-        self.compiled.push_str(&compiled);
-        self.compiled.push_str("}\n");
+        self.compiled.write_str(") {\n")?;
+        self.compiled.write_str(compiled.borrow())?;
+        self.compiled.write_str("}\n")?;
         Ok(out_value)
     }
-    pub fn function_at_ext<'a, F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue<'a>>>>(&'a mut self, at: QbeForwardDecl, params: &'a QbeFunctionParams, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
-        let id = at.0;
+    pub fn function_at_ext<'a, F: FnOnce(&mut QbeFunctionBuilder<Dst>) -> Result<Option<QbeValue<'a>>>>(&'a mut self, at: QbeForwardDecl, params: &'a QbeFunctionParams, opts: &QbeDecl, builder: F) -> Result<QbeValue> {
         if opts.export_as.is_some() {
             return Err(QbeError::ForwardDeclareName);
         }
-        let mut f = QbeFunctionBuilder::new(params, &mut self.names);
+
+        #[cfg(feature = "non-static-names")]
+        let mut f = QbeFunctionBuilder::try_new(Dst::default(), params, &mut self.names)?;
+        #[cfg(not(feature = "non-static-names"))]
+        let mut f = QbeFunctionBuilder::try_new(Dst::default(), params)?;
+
         let out_typ = f.build(builder)?;
 
+        let id = at.0;
         if opts.thread_local {
             writeln!(&mut self.compiled, "thread")?;
         }
@@ -304,16 +349,16 @@ impl QbeContext {
             writeln!(&mut self.compiled, "section {} {}", sec, flags)?;
         }
         if let Some(typ) = out_typ {
-            self.compiled.push_str("function ");
+            self.compiled.write_str("function ")?;
             typ.gen(&mut self.compiled)?;
             write!(&mut self.compiled, " $_{}(", id)?;
         } else {
             write!(&mut self.compiled, "function $_{}(", id)?;
         }
         params.gen(&mut self.compiled)?;
-        self.compiled.push_str(") {\n");
-        self.compiled.push_str(&f.compile());
-        self.compiled.push_str("}\n");
+        self.compiled.write_str(") {\n")?;
+        self.compiled.write_str(f.compile().borrow())?;
+        self.compiled.write_str("}\n")?;
         Ok(QbeValue::Global(id))
     }
 
@@ -323,7 +368,7 @@ impl QbeContext {
         QbeForwardDecl(id)
     }
 
-    pub fn compile(self) -> String {
+    pub fn compile(self) -> Dst {
         self.compiled
     }
 
@@ -334,7 +379,7 @@ impl QbeContext {
         let temp = tempfile::NamedTempFile::new()?;
         let path = temp.as_ref();
         let mut f = temp.reopen()?;
-        f.write_all(self.compiled.as_bytes())?;
+        f.write_all(self.compiled.borrow().as_bytes())?;
         unsafe {
             Ok(String::from_utf8_unchecked(
                 Command::new("qbe")

@@ -1,13 +1,13 @@
 use qbe::*;
 
 fn main() {
-    let mut ctx = QbeContext::new();
+    let mut ctx = QbeContext::<String>::new();
     let decl_opts = QbeDeclBuilder::default().export_as("test").build().unwrap();
     let params = QbeFunctionParams::default();
     ctx.function_ext(&params, &decl_opts, |f| {
         let start = f.start();
         let end_block = f.forward_declare_block();
-        let global_a = f.global_symbol("a")?;
+        let global_a = f.global_symbol("a");
         let x5 = f.initialize(QbeType::Double);
         let i2 = f.initialize(QbeType::Word);
         let x1 = f.copy(0.1)?;

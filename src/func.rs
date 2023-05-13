@@ -1,6 +1,10 @@
-use std::fmt::{self, Write};
-use std::pin::Pin;
-use std::ops::Deref;
+use core::fmt::{self, Write};
+
+#[cfg(any(feature = "early-return", feature = "non-static-names"))]
+use std::vec::Vec;
+#[cfg(feature = "non-static-names")]
+use std::{pin::Pin, ops::Deref, boxed::Box};
+
 use crate::{Result, QbeError};
 use crate::value::{QbeType, QbeValue, QbeLabel, QbeForwardLabel, QbeCodegen};
 use paste::paste;
@@ -57,7 +61,7 @@ macro_rules! unop {
                     concat!("\t%_{} ={} ", stringify!($name), " "),
                     id, outtyp.basic_name())?;
                 $input.gen(&mut self.compiled)?;
-                self.compiled.push('\n');
+                self.compiled.write_char('\n')?;
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(outtyp, id))
             }
@@ -77,7 +81,7 @@ macro_rules! unop {
                     concat!("\t%_{} ={} ", stringify!($op_name), " "),
                     id, outtyp.basic_name())?;
                 $input.gen(&mut self.compiled)?;
-                self.compiled.push('\n');
+                self.compiled.write_char('\n')?;
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(outtyp, id))
             }
@@ -104,9 +108,9 @@ macro_rules! binop {
                     concat!("\t%_{} ={} ", stringify!($name), " "),
                     id, outtyp.basic_name())?;
                 $in1.gen(&mut self.compiled)?;
-                self.compiled.push_str(", ");
+                self.compiled.write_str(", ")?;
                 $in2.gen(&mut self.compiled)?;
-                self.compiled.push('\n');
+                self.compiled.write_char('\n')?;
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(outtyp, id))
             }
@@ -131,9 +135,9 @@ macro_rules! binop {
                     concat!("\t%_{} ={} ", stringify!($op_name), " "),
                     id, outtyp.basic_name())?;
                 $in1.gen(&mut self.compiled)?;
-                self.compiled.push_str(", ");
+                self.compiled.write_str(", ")?;
                 $in2.gen(&mut self.compiled)?;
-                self.compiled.push('\n');
+                self.compiled.write_char('\n')?;
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(outtyp, id))
             }
@@ -168,9 +172,9 @@ macro_rules! cmp_op {
                     concat!("\t%_{} =l c", stringify!($name), "{} "),
                     id, typ)?;
                 val1.gen(&mut self.compiled)?;
-                self.compiled.push_str(", ");
+                self.compiled.write_str(", ")?;
                 val2.gen(&mut self.compiled)?;
-                self.compiled.push('\n');
+                self.compiled.write_char('\n')?;
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(QbeType::Long, id))
             }
@@ -198,9 +202,9 @@ macro_rules! cmp_op {
                     concat!("\t%_{} =w c", stringify!($name), "{} "),
                     id, typ)?;
                 val1.gen(&mut self.compiled)?;
-                self.compiled.push_str(", ");
+                self.compiled.write_str(", ")?;
                 val2.gen(&mut self.compiled)?;
-                self.compiled.push('\n');
+                self.compiled.write_char('\n')?;
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(QbeType::Word, id))
             }
@@ -209,33 +213,54 @@ macro_rules! cmp_op {
 }
 
 #[derive(Debug)]
-pub struct QbeFunctionBuilder<'a> {
+pub struct QbeFunctionBuilder<'a, Dst: Write> {
     params: &'a [QbeType],
     env: bool,
     variadic: bool,
     local_counter: u32,
     block_counter: u32,
-    compiled: String,
-    names: &'a mut Vec<Pin<Box<str>>>,
+    compiled: Dst,
+    #[cfg(feature = "early-return")]
     returned: Vec<Option<QbeType>>,
+    #[cfg(feature = "non-static-names")]
+    names: &'a mut Vec<Pin<Box<str>>>,
 }
-impl QbeFunctionBuilder<'_> {
-    pub(crate) fn new<'a>(params: &'a QbeFunctionParams, names: &'a mut Vec<Pin<Box<str>>>) -> QbeFunctionBuilder<'a> {
-        QbeFunctionBuilder {
+impl<Dst: Write> QbeFunctionBuilder<'_, Dst> {
+    #[cfg(feature = "non-static-names")]
+    pub(crate) fn try_new<'a>(mut buffer: Dst, params: &'a QbeFunctionParams, names: &'a mut Vec<Pin<Box<str>>>) -> Result<QbeFunctionBuilder<'a, Dst>> {
+        // @_0 is the start block
+        buffer.write_str("@_0\n")?;
+        Ok(QbeFunctionBuilder {
             params: params.params,
             env: params.env,
             variadic: params.variadic,
             local_counter: params.count(),
             // 0 is reserved for start block, 1 is reserved for end block
             block_counter: 2,
-            // @_0 is the start block
-            compiled: String::from("@_0\n"),
+            compiled: buffer,
             names,
+            #[cfg(feature = "early-return")]
             returned: vec![],
-        }
+        })
+    }
+    #[cfg(not(feature = "non-static-names"))]
+    pub(crate) fn try_new<'a>(mut buffer: Dst, params: &'a QbeFunctionParams) -> Result<QbeFunctionBuilder<'a, Dst>> {
+        // @_0 is the start block
+        buffer.write_str("@_0\n")?;
+        Ok(QbeFunctionBuilder {
+            params: params.params,
+            env: params.env,
+            variadic: params.variadic,
+            local_counter: params.count(),
+            // 0 is reserved for start block, 1 is reserved for end block
+            block_counter: 2,
+            compiled: buffer,
+            #[cfg(feature = "early-return")]
+            returned: vec![],
+        })
     }
 }
-impl<'a> QbeFunctionBuilder<'a> {
+impl<'a, Dst: Write> QbeFunctionBuilder<'a, Dst> {
     pub fn start(&self) -> QbeLabel {
         QbeLabel(0)
     }
@@ -266,7 +291,7 @@ impl<'a> QbeFunctionBuilder<'a> {
         self.local_counter += 1;
         QbeValue::Temporary(typ, id)
     }
-    pub fn reassign<F: FnOnce(&mut QbeFunctionBuilder<'a>) -> Result<QbeValue<'a>>>(&mut self, val: QbeValue, mutator: F) -> Result<()> {
+    pub fn reassign<F: FnOnce(&mut QbeFunctionBuilder<'a, Dst>) -> Result<QbeValue<'a>>>(&mut self, val: QbeValue, mutator: F) -> Result<()> {
         let old_counter = self.local_counter;
         let new_counter = match val {
             QbeValue::Temporary(_, id) => id,
@@ -284,17 +309,27 @@ impl<'a> QbeFunctionBuilder<'a> {
         Ok(())
     }
 
-    pub fn global_symbol(&mut self, sym: &str) -> Result<QbeValue<'a>> {
+    #[cfg(feature = "non-static-names")]
+    pub fn global_symbol(&mut self, sym: &str) -> QbeValue<'a> {
         let s = Box::into_pin(Box::<str>::from(sym));
         let ptr = s.deref() as *const str;
         self.names.push(s);
-        Ok(QbeValue::Named(unsafe { ptr.as_ref().unwrap() }))
+        QbeValue::Named(unsafe { ptr.as_ref().unwrap() })
     }
-    pub fn thread_local_symbol(&mut self, sym: &str) -> Result<QbeValue<'a>> {
+    #[cfg(feature = "non-static-names")]
+    pub fn thread_local_symbol(&mut self, sym: &str) -> QbeValue<'a> {
         let s = Box::into_pin(Box::<str>::from(sym));
         let ptr = s.deref() as *const str;
         self.names.push(s);
-        Ok(QbeValue::ThreadLocalNamed(unsafe { ptr.as_ref().unwrap() }))
+        QbeValue::ThreadLocalNamed(unsafe { ptr.as_ref().unwrap() })
+    }
+    #[cfg(not(feature = "non-static-names"))]
+    pub fn global_symbol(&mut self, sym: &'static str) -> QbeValue<'a> {
+        QbeValue::Named(sym)
+    }
+    #[cfg(not(feature = "non-static-names"))]
+    pub fn thread_local_symbol(&mut self, sym: &'static str) -> QbeValue<'a> {
+        QbeValue::ThreadLocalNamed(sym)
     }
 
     pub fn block(&mut self) -> Result<QbeLabel> {
@@ -326,7 +361,7 @@ impl<'a> QbeFunctionBuilder<'a> {
         val1.gen(&mut self.compiled)?;
         write!(&mut self.compiled, ", @_{} ", path2.into().0)?;
         val2.gen(&mut self.compiled)?;
-        self.compiled.push('\n');
+        self.compiled.write_char('\n')?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
     }
@@ -338,7 +373,7 @@ impl<'a> QbeFunctionBuilder<'a> {
         val1.into().gen(&mut self.compiled)?;
         write!(&mut self.compiled, ", @_{} ", path2.into().0)?;
         val2.into().gen(&mut self.compiled)?;
-        self.compiled.push('\n');
+        self.compiled.write_char('\n')?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
     }
@@ -346,32 +381,32 @@ impl<'a> QbeFunctionBuilder<'a> {
     // call
     fn call_inner<I, A>(&mut self, func: QbeValue, env: Option<QbeValue>, args: I, va_args: Option<I>) -> Result<()>
     where I: IntoIterator<Item = A>, A: Into<QbeValue<'a>> {
-        self.compiled.push_str("call");
+        self.compiled.write_str("call")?;
         func.gen(&mut self.compiled)?;
-        self.compiled.push('(');
+        self.compiled.write_char('(')?;
         if let Some(env) = env {
-            self.compiled.push_str("env ");
+            self.compiled.write_str("env ")?;
             env.gen(&mut self.compiled)?;
-            self.compiled.push_str(", ");
+            self.compiled.write_str(", ")?;
         }
         for arg in args {
             let arg = arg.into();
             arg.type_of().gen(&mut self.compiled)?;
-            self.compiled.push(' ');
+            self.compiled.write_char(' ')?;
             arg.gen(&mut self.compiled)?;
-            self.compiled.push_str(", ");
+            self.compiled.write_str(", ")?;
         }
         if let Some(va) = va_args {
-            self.compiled.push_str("..., ");
+            self.compiled.write_str("..., ")?;
             for arg in va {
                 let arg = arg.into();
                 arg.type_of().gen(&mut self.compiled)?;
-                self.compiled.push(' ');
+                self.compiled.write_char(' ')?;
                 arg.gen(&mut self.compiled)?;
-                self.compiled.push_str(", ");
+                self.compiled.write_str(", ")?;
             }
         }
-        self.compiled.push_str(")\n");
+        self.compiled.write_str(")\n")?;
         Ok(())
     }
     pub fn call<F, I, A>(&mut self, func: F, args: I) -> Result<()>
@@ -380,7 +415,7 @@ impl<'a> QbeFunctionBuilder<'a> {
         if !func.is_global() {
             return Err(QbeError::NonGlobalCall);
         }
-        self.compiled.push('\t');
+        self.compiled.write_char('\t')?;
         self.call_inner(func, None, args, None)
     }
     pub fn call_ret<F, I, A>(&mut self, func: F, args: I, t: QbeType) -> Result<QbeValue<'a>>
@@ -392,7 +427,7 @@ impl<'a> QbeFunctionBuilder<'a> {
         let id = self.local_counter;
         write!(&mut self.compiled, "\t%_{} =", id)?;
         t.gen(&mut self.compiled)?;
-        self.compiled.push(' ');
+        self.compiled.write_char(' ')?;
         self.call_inner(func, None, args, None)?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
@@ -403,7 +438,7 @@ impl<'a> QbeFunctionBuilder<'a> {
         if !func.is_global() {
             return Err(QbeError::NonGlobalCall);
         }
-        self.compiled.push('\t');
+        self.compiled.write_char('\t')?;
         self.call_inner(func, Some(env.into()), args, None)
     }
     pub fn call_env_ret<F, E, I, A>(&mut self, func: F, env: E, args: I, t: QbeType) -> Result<QbeValue<'a>>
@@ -415,7 +450,7 @@ impl<'a> QbeFunctionBuilder<'a> {
         let id = self.local_counter;
         write!(&mut self.compiled, "\t%_{} =", id)?;
         t.gen(&mut self.compiled)?;
-        self.compiled.push(' ');
+        self.compiled.write_char(' ')?;
         self.call_inner(func, Some(env.into()), args, None)?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
@@ -426,7 +461,7 @@ impl<'a> QbeFunctionBuilder<'a> {
         if !func.is_global() {
             return Err(QbeError::NonGlobalCall);
         }
-        self.compiled.push('\t');
+        self.compiled.write_char('\t')?;
         self.call_inner(func, None, args, Some(va_args))
     }
     pub fn call_va_ret<F, I, A>(&mut self, func: F, args: I, va_args: I, t: QbeType) -> Result<QbeValue<'a>>
@@ -438,7 +473,7 @@ impl<'a> QbeFunctionBuilder<'a> {
         let id = self.local_counter;
         write!(&mut self.compiled, "\t%_{} =", id)?;
         t.gen(&mut self.compiled)?;
-        self.compiled.push(' ');
+        self.compiled.write_char(' ')?;
         self.call_inner(func, None, args, Some(va_args))?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
@@ -449,7 +484,7 @@ impl<'a> QbeFunctionBuilder<'a> {
         if !func.is_global() {
             return Err(QbeError::NonGlobalCall);
         }
-        self.compiled.push('\t');
+        self.compiled.write_char('\t')?;
         self.call_inner(func, Some(env.into()), args, Some(va_args))
     }
     pub fn call_va_env_ret<F, E, I, A>(&mut self, func: F, env: E, args: I, va_args: I, t: QbeType) -> Result<QbeValue<'a>>
@@ -461,7 +496,7 @@ impl<'a> QbeFunctionBuilder<'a> {
         let id = self.local_counter;
         write!(&mut self.compiled, "\t%_{} =", id)?;
         t.gen(&mut self.compiled)?;
-        self.compiled.push(' ');
+        self.compiled.write_char(' ')?;
         self.call_inner(func, Some(env.into()), args, Some(va_args))?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
@@ -556,9 +591,9 @@ impl<'a> QbeFunctionBuilder<'a> {
         };
         write!(&mut self.compiled, "\tstore{} ", typ)?;
         val.gen(&mut self.compiled)?;
-        self.compiled.push_str(", ");
+        self.compiled.write_str(", ")?;
         to.gen(&mut self.compiled)?;
-        self.compiled.push('\n');
+        self.compiled.write_char('\n')?;
         Ok(())
     }
     pub fn store_t<X, Y>(&mut self, val: X, to: Y, t: QbeType) -> Result<()>
@@ -570,9 +605,9 @@ impl<'a> QbeFunctionBuilder<'a> {
         let val = val.into();
         write!(&mut self.compiled, "\tstore{} ", t.basic_name())?;
         val.gen(&mut self.compiled)?;
-        self.compiled.push_str(", ");
+        self.compiled.write_str(", ")?;
         to.gen(&mut self.compiled)?;
-        self.compiled.push('\n');
+        self.compiled.write_char('\n')?;
         Ok(())
     }
     pub fn load<T: Into<QbeValue<'a>>>(&mut self, from: T, t: QbeType) -> Result<QbeValue<'a>> {
@@ -591,7 +626,7 @@ impl<'a> QbeFunctionBuilder<'a> {
             _ => unreachable!(),
         };
         from.gen(&mut self.compiled)?;
-        self.compiled.push('\n');
+        self.compiled.write_char('\n')?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t.promote(), id))
     }
@@ -611,7 +646,7 @@ impl<'a> QbeFunctionBuilder<'a> {
             _ => unreachable!(),
         };
         from.gen(&mut self.compiled)?;
-        self.compiled.push('\n');
+        self.compiled.write_char('\n')?;
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t.promote(), id))
     }
@@ -629,13 +664,13 @@ impl<'a> QbeFunctionBuilder<'a> {
         if !size.type_of().is_integer() {
             return Err(QbeError::IncorrectType("integer"));
         }
-        self.compiled.push_str("\tblit ");
+        self.compiled.write_str("\tblit ")?;
         src.gen(&mut self.compiled)?;
-        self.compiled.push_str(", ");
+        self.compiled.write_str(", ")?;
         dst.gen(&mut self.compiled)?;
-        self.compiled.push_str(", ");
+        self.compiled.write_str(", ")?;
         size.gen(&mut self.compiled)?;
-        self.compiled.push('\n');
+        self.compiled.write_char('\n')?;
         Ok(())
     }
     unop!{'a, alloc4, val, integer, QbeType::Long}
@@ -649,15 +684,17 @@ impl<'a> QbeFunctionBuilder<'a> {
     }
     pub fn jnz<T, YL, NL>(&mut self, cond: T, yes: YL, no: NL) -> Result<()>
     where T: Into<QbeValue<'a>>, YL: Into<QbeLabel>, NL: Into<QbeLabel> {
-        self.compiled.push_str("\tjnz ");
+        self.compiled.write_str("\tjnz ")?;
         cond.into().gen(&mut self.compiled)?;
         writeln!(&mut self.compiled, ", @_{}, @_{}", yes.into().0, no.into().0)?;
         Ok(())
     }
     pub fn hlt(&mut self) -> Result<()> {
-        self.compiled.push_str("\thlt\n");
+        self.compiled.write_str("\thlt\n")?;
         Ok(())
     }
+
+    #[cfg(feature = "early-return")]
     pub fn early_return<T: Into<QbeValue<'a>>>(&mut self, val: Option<T>) -> Result<()> {
         if let Some(val) = val {
             write!(&mut self.compiled, "\tret ")?;
@@ -680,9 +717,9 @@ impl<'a> QbeFunctionBuilder<'a> {
         if !at.type_of().is_pointer() {
             return Err(QbeError::IncorrectType("pointer"));
         }
-        self.compiled.push_str("\tvastart ");
+        self.compiled.write_str("\tvastart ")?;
         at.gen(&mut self.compiled)?;
-        self.compiled.push('\n');
+        self.compiled.write_char('\n')?;
         Ok(())
     }
     pub fn vaarg<T: Into<QbeValue<'a>>>(&mut self, from: T, t: QbeType) -> Result<QbeValue<'a>> {
@@ -701,24 +738,26 @@ impl<'a> QbeFunctionBuilder<'a> {
         Ok(QbeValue::Temporary(t, id))
     }
 
-    pub(crate) fn build<F: FnOnce(&mut QbeFunctionBuilder) -> Result<Option<QbeValue<'a>>>>(&mut self, builder: F) -> Result<Option<QbeType>> {
+    pub(crate) fn build<F: FnOnce(&mut QbeFunctionBuilder<Dst>) -> Result<Option<QbeValue<'a>>>>(&mut self, builder: F) -> Result<Option<QbeType>> {
         let ret = builder(self)?;
         let ret_typ = ret.map(|x| x.type_of().promote());
 
+        #[cfg(feature = "early-return")]
         for i in self.returned.iter() {
             if *i != ret_typ {
                 return Err(QbeError::DisagreeingReturns);
             }
         }
+
         // label the end block in case anything uses it as a destination
-        self.compiled.push_str("@_1\n\tret ");
+        self.compiled.write_str("@_1\n\tret ")?;
         if let Some(ret) = ret {
             ret.gen(&mut self.compiled)?;
         }
-        self.compiled.push('\n');
+        self.compiled.write_char('\n')?;
         Ok(ret_typ)
     }
-    pub(crate) fn compile(self) -> String {
+    pub(crate) fn compile(self) -> Dst {
         self.compiled
     }
 }
