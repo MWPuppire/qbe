@@ -373,7 +373,7 @@ pub struct QbeFunction<'a, Out: QbeFunctionOutput<'a>> {
     pub(crate) inner: QbeFunctionInner<'a>,
     pub(crate) ud: Out::UserData,
 }
-impl<'a, 'b, Out: QbeFunctionOutput<'a>> QbeFunctionCall<'a> for QbeFunction<'a, Out> {
+impl<'a, Out: QbeFunctionOutput<'a>> QbeFunctionCall<'a> for QbeFunction<'a, Out> {
     type Output = Out;
     fn call_on<CallerOut, I, A, const V: bool>(&self, caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, args: I) -> Result<Out>
     where CallerOut: QbeFunctionOutput<'a>, I: IntoIterator<Item = A>, A: Into<QbeValue<'a>> {
@@ -399,7 +399,7 @@ pub struct QbeVariadicFunction<'a, Out: QbeFunctionOutput<'a>> {
     pub(crate) inner: QbeFunctionInner<'a>,
     pub(crate) ud: Out::UserData,
 }
-impl<'a, 'b, Out: QbeFunctionOutput<'a>> QbeVariadicFunctionCall<'a> for QbeVariadicFunction<'a, Out> {
+impl<'a, Out: QbeFunctionOutput<'a>> QbeVariadicFunctionCall<'a> for QbeVariadicFunction<'a, Out> {
     type Output = Out;
     fn call_va_on<CallerOut, I, A, const V: bool>(&self, caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, args: I, va_args: I) -> Result<Out>
     where CallerOut: QbeFunctionOutput<'a>, I: IntoIterator<Item = A>, A: Into<QbeValue<'a>> {
@@ -428,8 +428,8 @@ impl<'a, 'b, Out: QbeFunctionOutput<'a>> QbeVariadicFunctionCall<'a> for QbeVari
     }
 }
 
-pub trait QbeFunctionOutput<'a>: Sized {
-    type UserData: PartialEq;
+pub trait QbeFunctionOutput<'a>: Sized + Copy {
+    type UserData: PartialEq + Copy;
     fn prep_call<CallerOut, const V: bool>(caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, ud: &Self::UserData) -> Result<()>
     where CallerOut: QbeFunctionOutput<'a>;
     fn finish_call<CallerOut, const V: bool>(caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, ud: &Self::UserData) -> Result<Self>

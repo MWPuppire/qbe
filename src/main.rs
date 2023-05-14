@@ -2,8 +2,10 @@ use qbe::*;
 
 fn main() {
     let mut ctx = QbeContext::new();
-    let decl_opts = QbeDeclBuilder::default().export_as("test").build().unwrap();
-    ctx.function_ext(&[], &decl_opts, |f| {
+    let a_opts = QbeDeclBuilder::default().export_as("a").build().unwrap();
+    ctx.global_ext(0, &a_opts).unwrap();
+    let test_opts = QbeDeclBuilder::default().export_as("test").build().unwrap();
+    let test = ctx.function_ext(&[], &test_opts, |f| {
         let start = f.start();
         let end_block = f.forward_declare_block();
         let global_a = f.global_symbol("a");
@@ -23,5 +25,15 @@ fn main() {
         f.store(i2, global_a)?;
         Ok(())
     }).unwrap();
+    /*
+    let main_opts = QbeDeclBuilder::default().export_as("main").build().unwrap();
+    ctx.function_ext(&[], &main_opts, |f| {
+        f.call(test, [0i32])?;
+        let global_a = f.global_symbol("a");
+        let eq = f.eq(global_a, 55)?;
+        let out = f.sub(1, eq)?;
+        Ok(out)
+    }).unwrap();
+    */
     println!("{}", ctx.to_assembly().unwrap());
 }

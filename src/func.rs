@@ -198,7 +198,7 @@ pub struct QbeFunctionBuilder<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bo
 impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a, Out, VARIADIC> {
     pub(crate) fn new(params: &'a [QbeType], names: &'a mut Vec<Pin<Box<str>>>) -> QbeFunctionBuilder<'a, Out, VARIADIC> {
         QbeFunctionBuilder {
-            params: params,
+            params,
             local_counter: params.len() as u32,
             // 0 is reserved for start block, 1 is reserved for end block
             block_counter: 2,
@@ -318,11 +318,11 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
     }
 
     // call
-    pub fn call<UD, F, I, A>(&mut self, func: F, args: I) -> Result<F::Output>
+    pub fn call<F, I, A>(&mut self, func: F, args: I) -> Result<F::Output>
     where F: QbeFunctionCall<'a>, I: IntoIterator<Item = A>, A: Into<QbeValue<'a>> {
         func.call_on(self, args)
     }
-    pub fn call_va<UD, F, I, A>(&mut self, func: F, args: I, va_args: I) -> Result<F::Output>
+    pub fn call_va<F, I, A>(&mut self, func: F, args: I, va_args: I) -> Result<F::Output>
     where F: QbeVariadicFunctionCall<'a>, I: IntoIterator<Item = A>, A: Into<QbeValue<'a>> {
         func.call_va_on(self, args, va_args)
     }
