@@ -261,8 +261,8 @@ impl QbeContext {
     where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out> {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let name = QbeFunctionInner::Global(this.global_counter);
-        this.global_counter += 1;
         let ud = self.make_function(name, params, builder)?;
+        this.global_counter += 1;
         Ok(QbeFunction::<Out> {
             inner: name,
             ud,
@@ -287,7 +287,6 @@ impl QbeContext {
             QbeFunctionInner::Named(unsafe { ptr.as_ref().unwrap() })
         } else {
             let id = this.global_counter;
-            this.global_counter += 1;
             QbeFunctionInner::Global(id)
         };
 
@@ -303,6 +302,9 @@ impl QbeContext {
         }
 
         let ud = self.make_function(out_name, params, builder)?;
+        if opts.export_as.is_none() {
+            this.global_counter += 1;
+        }
         Ok(QbeFunction::<Out> {
             inner: out_name,
             ud,
@@ -338,8 +340,8 @@ impl QbeContext {
     where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out> {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let name = QbeFunctionInner::Global(this.global_counter);
-        this.global_counter += 1;
         let ud = self.make_function(name, params, builder)?;
+        this.global_counter += 1;
         Ok(QbeVariadicFunction::<Out> {
             inner: name,
             ud,
@@ -364,7 +366,6 @@ impl QbeContext {
             QbeFunctionInner::Named(unsafe { ptr.as_ref().unwrap() })
         } else {
             let id = this.global_counter;
-            this.global_counter += 1;
             QbeFunctionInner::Global(id)
         };
 
@@ -380,6 +381,9 @@ impl QbeContext {
         }
 
         let ud = self.make_function(out_name, params, builder)?;
+        if opts.export_as.is_none() {
+            this.global_counter += 1;
+        }
         Ok(QbeVariadicFunction::<Out> {
             inner: out_name,
             ud,
