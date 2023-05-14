@@ -380,7 +380,7 @@ impl<'a, Out: QbeFunctionOutput<'a>> QbeFunctionCall<'a> for QbeFunction<'a, Out
         caller.compiled.write_char('\t')?;
         Out::prep_call(caller, &self.ud)?;
         caller.compiled.write_str("call ")?;
-        <&Self as Into<QbeValue<'a>>>::into(self).gen(&mut caller.compiled)?;
+        self.inner.gen(&mut caller.compiled)?;
         caller.compiled.write_char('(')?;
         for arg in args {
             let arg = arg.into();
@@ -406,7 +406,7 @@ impl<'a, Out: QbeFunctionOutput<'a>> QbeVariadicFunctionCall<'a> for QbeVariadic
         caller.compiled.write_char('\t')?;
         Out::prep_call(caller, &self.ud)?;
         caller.compiled.write_str("call ")?;
-        <&Self as Into<QbeValue<'a>>>::into(self).gen(&mut caller.compiled)?;
+        self.inner.gen(&mut caller.compiled)?;
         caller.compiled.write_char('(')?;
         for arg in args {
             let arg = arg.into();
