@@ -1,10 +1,11 @@
 #[macro_use]
 extern crate thiserror;
-
 #[macro_use]
 extern crate derive_builder;
-
 extern crate cfg_if;
+extern crate libc;
+extern crate paste;
+extern crate errno;
 
 mod value;
 mod func;
