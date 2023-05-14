@@ -10,12 +10,18 @@ derive_builder = { version = "0.12", default-features = false }
 thiserror = { version = "1.0", optional = true }
 paste = "1.0"
 cfg-if = "1.0"
-tempfile = { version = "3", optional = true }
+spin = "0.9"
+libc = { version = "0.2", default-features = false }
+errno = "0.3"
 
 [features]
-default = ["qbe-command", "non-static-names", "early-return", "std", "thiserror"]
-qbe-command = ["dep:tempfile", "std"]
+default = ["non-static-names", "early-return", "std", "thiserror"]
 non-static-names = ["std"]
 early-return = ["std"]
-std = ["derive_builder/std"]
+std = ["derive_builder/std", "libc/std"]
 thiserror = ["std", "dep:thiserror"]
+
+[build-dependencies]
+glob = "0.3"
+cc = "1.0"
+bindgen = "0.65"

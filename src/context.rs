@@ -7,6 +7,7 @@ use std::{pin::Pin, ops::Deref, vec::Vec, boxed::Box};
 use crate::{Result, QbeError};
 use crate::value::{QbeValue, QbeData, QbeType, QbeForwardDecl, QbeCodegen};
 use crate::func::{QbeFunctionBuilder, QbeFunctionParams};
+use crate::qbe_wrapper::{QbeTarget, CFile, write_assembly_to_string, write_assembly_to_file};
 
 #[derive(Clone, Debug, Builder)]
 #[cfg_attr(not(feature = "std"), builder(no_std))]
@@ -372,22 +373,14 @@ impl<Dst: Write + Default + Borrow<str>> QbeContext<Dst> {
         self.compiled
     }
 
-    #[cfg(feature = "qbe-command")]
-    pub fn into_assembly(self, target: crate::QbeTarget) -> std::io::Result<String> {
-        use std::process::Command;
-        use std::io::Write;
-        let temp = tempfile::NamedTempFile::new()?;
-        let path = temp.as_ref();
-        let mut f = temp.reopen()?;
-        f.write_all(self.compiled.borrow().as_bytes())?;
-        unsafe {
-            Ok(String::from_utf8_unchecked(
-                Command::new("qbe")
-                .arg("-t").arg(target.as_str())
-                .arg(path)
-                .output()?
-                .stdout
-            ))
-        }
+    #[cfg(feature = "std")]
+    pub fn write_assembly_to_file(self, file_name: &str) -> std::result::Result<(), errno::Errno> {
+        let f = CFile::open(file_name, "w\0")?;
+        write_assembly_to_file(self.compiled.borrow(), QbeTarget::default(), &f)?;
+        Ok(())
+    }
+    #[cfg(feature = "std")]
+    pub fn to_assembly(self) -> std::result::Result<String, errno::Errno> {
+        write_assembly_to_string(self.compiled.borrow(), QbeTarget::default())
     }
 }
