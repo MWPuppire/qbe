@@ -5,10 +5,10 @@
 
 include!(concat!(env!("OUT_DIR"), "/qbe-bindings.rs"));
 
-use core::mem::{MaybeUninit, ManuallyDrop};
-use core::ptr::NonNull;
+use std::mem::{MaybeUninit, ManuallyDrop};
+use std::ptr::NonNull;
+use std::sync::Mutex;
 use libc::*;
-use spin::mutex::Mutex;
 use errno::{Errno, errno};
 
 #[export_name = "T"]
@@ -16,69 +16,7 @@ static mut TARGET: MaybeUninit<Target> = MaybeUninit::uninit();
 #[export_name = "debug"]
 static mut DEBUG: [c_char; 91] = [0; 91];
 
-static mut OUTF: Mutex<*mut FILE> = Mutex::new(core::ptr::null_mut());
-
-extern "C" fn data(d: *mut Dat) {
-    unsafe {
-        let file = OUTF.get_mut();
-        emitdat(d, *file);
-        if ((*d).type_ == Dat_DEnd) {
-            fputs("\n\0".as_ptr() as *const c_char, *file);
-            freeall();
-        }
-    }
-}
-extern "C" fn func(f: *mut Fn) {
-    unsafe {
-        let file = OUTF.get_mut();
-        (T.abi0.unwrap())(f);
-        fillrpo(f);
-        fillpreds(f);
-        filluse(f);
-        promote(f);
-        filluse(f);
-        ssa(f);
-        filluse(f);
-        ssacheck(f);
-        fillalias(f);
-        loadopt(f);
-        filluse(f);
-        fillalias(f);
-        coalesce(f);
-        filluse(f);
-        ssacheck(f);
-        copy(f);
-        filluse(f);
-        fold(f);
-        (T.abi1.unwrap())(f);
-        simpl(f);
-        fillpreds(f);
-        filluse(f);
-        (T.isel.unwrap())(f);
-        fillrpo(f);
-        filllive(f);
-        filllive(f);
-        filllive(f);
-        fillloop(f);
-        fillcost(f);
-        spill(f);
-        rega(f);
-        fillrpo(f);
-        simpljmp(f);
-        fillpreds(f);
-        fillrpo(f);
-        for n in 0..(*f).nblk {
-            if n == (*f).nblk - 1 {
-                (*(*(*f).rpo.offset(n as isize))).link = core::ptr::null_mut();
-            } else {
-                (*(*(*f).rpo.offset(n as isize))).link = (*(*f).rpo.offset(n as isize + 1));
-            }
-        }
-        (T.emitfn.unwrap())(f, *file);
-        fputs("\n\0".as_ptr() as *const c_char, *file);
-        freeall();
-    }
-}
+static mut OUTF: Mutex<*mut FILE> = Mutex::new(std::ptr::null_mut());
 
 pub(crate) struct CFile(pub(crate) NonNull<FILE>);
 impl CFile {
@@ -161,9 +99,71 @@ impl Drop for CFile {
     }
 }
 
+extern "C" fn data(d: *mut Dat) {
+    unsafe {
+        let file = OUTF.get_mut().unwrap();
+        emitdat(d, *file);
+        if ((*d).type_ == Dat_DEnd) {
+            fputs("\n\0".as_ptr() as *const c_char, *file);
+            freeall();
+        }
+    }
+}
+extern "C" fn func(f: *mut Fn) {
+    unsafe {
+        let file = OUTF.get_mut().unwrap();
+        (T.abi0.unwrap())(f);
+        fillrpo(f);
+        fillpreds(f);
+        filluse(f);
+        promote(f);
+        filluse(f);
+        ssa(f);
+        filluse(f);
+        ssacheck(f);
+        fillalias(f);
+        loadopt(f);
+        filluse(f);
+        fillalias(f);
+        coalesce(f);
+        filluse(f);
+        ssacheck(f);
+        copy(f);
+        filluse(f);
+        fold(f);
+        (T.abi1.unwrap())(f);
+        simpl(f);
+        fillpreds(f);
+        filluse(f);
+        (T.isel.unwrap())(f);
+        fillrpo(f);
+        filllive(f);
+        filllive(f);
+        filllive(f);
+        fillloop(f);
+        fillcost(f);
+        spill(f);
+        rega(f);
+        fillrpo(f);
+        simpljmp(f);
+        fillpreds(f);
+        fillrpo(f);
+        for n in 0..(*f).nblk {
+            if n == (*f).nblk - 1 {
+                (*(*(*f).rpo.offset(n as isize))).link = std::ptr::null_mut();
+            } else {
+                (*(*(*f).rpo.offset(n as isize))).link = (*(*f).rpo.offset(n as isize + 1));
+            }
+        }
+        (T.emitfn.unwrap())(f, *file);
+        fputs("\n\0".as_ptr() as *const c_char, *file);
+        freeall();
+    }
+}
+
 pub(crate) fn write_assembly_to_file(code: &str, target: QbeTarget, dest: &CFile) -> Result<(), Errno> {
     unsafe {
-        let mut file = OUTF.lock();
+        let mut file = OUTF.lock().unwrap();
         *file = dest.file();
 
         DEBUG.fill(0);
@@ -176,10 +176,9 @@ pub(crate) fn write_assembly_to_file(code: &str, target: QbeTarget, dest: &CFile
     }
 }
 
-#[cfg(feature = "std")]
 pub(crate) fn write_assembly_to_string(code: &str, target: QbeTarget) -> Result<String, Errno> {
     unsafe {
-        let mut file = OUTF.lock();
+        let mut file = OUTF.lock().unwrap();
         let temp = CFile::temporary()?;
         *file = temp.file();
 

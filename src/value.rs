@@ -1,5 +1,6 @@
-use core::fmt::{self, Write};
+use std::fmt::{self, Write};
 use crate::{Result, QbeError};
+use crate::func::{QbeFunctionCall, QbeVariadicFunctionCall, QbeFunctionBuilder};
 
 pub(crate) trait QbeCodegen<Writer: Write> {
     fn gen(&self, dest: &mut Writer) -> fmt::Result;
@@ -246,11 +247,6 @@ impl<'a> QbeValue<'a> {
             _ => Err(QbeError::CannotInferType),
         }
     }
-    pub(crate) fn is_global(&self) -> bool {
-        // how the code is currently written, only global symbols can be `Named`
-        // if this changes, this function will need to change accordingly
-        matches!(self, Self::Global(_) | Self::Named(_) | Self::ThreadLocalNamed(_))
-    }
 }
 impl<W: Write> QbeCodegen<W> for QbeValue<'_> {
     fn gen(&self, d: &mut W) -> fmt::Result {
@@ -322,6 +318,22 @@ impl<'a> From<&'a str> for QbeValue<'a> {
         Self::Named(item)
     }
 }
+impl<'a, Out: QbeFunctionOutput<'a>> From<&QbeFunction<'a, Out>> for QbeValue<'a> {
+    fn from(item: &QbeFunction<'a, Out>) -> Self {
+        match item.inner {
+            QbeFunctionInner::Global(id)  => Self::Global(id),
+            QbeFunctionInner::Named(name) => Self::Named(name),
+        }
+    }
+}
+impl<'a, Out: QbeFunctionOutput<'a>> From<&QbeVariadicFunction<'a, Out>> for QbeValue<'a> {
+    fn from(item: &QbeVariadicFunction<'a, Out>) -> Self {
+        match item.inner {
+            QbeFunctionInner::Global(id)  => Self::Global(id),
+            QbeFunctionInner::Named(name) => Self::Named(name),
+        }
+    }
+}
 
 // for ease of design, a forward declaration cannot use `export_as`
 // if this is desired, use a global named symbol instead
@@ -339,5 +351,143 @@ pub struct QbeForwardLabel(pub(crate) u32);
 impl From<&QbeForwardLabel> for QbeLabel {
     fn from(item: &QbeForwardLabel) -> Self {
         QbeLabel(item.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum QbeFunctionInner<'a> {
+    Global(u32),
+    Named(&'a str),
+}
+impl<'a, W: Write> QbeCodegen<W> for QbeFunctionInner<'a> {
+    fn gen(&self, dest: &mut W) -> fmt::Result {
+        match self {
+            Self::Global(id)  => write!(dest, "$_{}", id),
+            Self::Named(name) => write!(dest, "${}", name),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QbeFunction<'a, Out: QbeFunctionOutput<'a>> {
+    pub(crate) inner: QbeFunctionInner<'a>,
+    pub(crate) ud: Out::UserData,
+}
+impl<'a, 'b, Out: QbeFunctionOutput<'a>> QbeFunctionCall<'a> for QbeFunction<'a, Out> {
+    type Output = Out;
+    fn call_on<CallerOut, I, A, const V: bool>(&self, caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, args: I) -> Result<Out>
+    where CallerOut: QbeFunctionOutput<'a>, I: IntoIterator<Item = A>, A: Into<QbeValue<'a>> {
+        caller.compiled.write_char('\t')?;
+        Out::prep_call(caller, &self.ud)?;
+        caller.compiled.write_str("call ")?;
+        <&Self as Into<QbeValue<'a>>>::into(self).gen(&mut caller.compiled)?;
+        caller.compiled.write_char('(')?;
+        for arg in args {
+            let arg = arg.into();
+            arg.type_of().gen(&mut caller.compiled)?;
+            caller.compiled.write_char(' ')?;
+            arg.gen(&mut caller.compiled)?;
+            caller.compiled.write_str(", ")?;
+        }
+        caller.compiled.write_str(")\n")?;
+        Out::finish_call(caller, &self.ud)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QbeVariadicFunction<'a, Out: QbeFunctionOutput<'a>> {
+    pub(crate) inner: QbeFunctionInner<'a>,
+    pub(crate) ud: Out::UserData,
+}
+impl<'a, 'b, Out: QbeFunctionOutput<'a>> QbeVariadicFunctionCall<'a> for QbeVariadicFunction<'a, Out> {
+    type Output = Out;
+    fn call_va_on<CallerOut, I, A, const V: bool>(&self, caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, args: I, va_args: I) -> Result<Out>
+    where CallerOut: QbeFunctionOutput<'a>, I: IntoIterator<Item = A>, A: Into<QbeValue<'a>> {
+        caller.compiled.write_char('\t')?;
+        Out::prep_call(caller, &self.ud)?;
+        caller.compiled.write_str("call ")?;
+        <&Self as Into<QbeValue<'a>>>::into(self).gen(&mut caller.compiled)?;
+        caller.compiled.write_char('(')?;
+        for arg in args {
+            let arg = arg.into();
+            arg.type_of().gen(&mut caller.compiled)?;
+            caller.compiled.write_char(' ')?;
+            arg.gen(&mut caller.compiled)?;
+            caller.compiled.write_str(", ")?;
+        }
+        caller.compiled.write_str("..., ")?;
+        for arg in va_args {
+            let arg = arg.into();
+            arg.type_of().gen(&mut caller.compiled)?;
+            caller.compiled.write_char(' ')?;
+            arg.gen(&mut caller.compiled)?;
+            caller.compiled.write_str(", ")?;
+        }
+        caller.compiled.write_str(")\n")?;
+        Out::finish_call(caller, &self.ud)
+    }
+}
+
+pub trait QbeFunctionOutput<'a>: Sized {
+    type UserData: PartialEq;
+    fn prep_call<CallerOut, const V: bool>(caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, ud: &Self::UserData) -> Result<()>
+    where CallerOut: QbeFunctionOutput<'a>;
+    fn finish_call<CallerOut, const V: bool>(caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, ud: &Self::UserData) -> Result<Self>
+    where CallerOut: QbeFunctionOutput<'a>;
+    fn prep_func(&self, compiled: &mut String) -> Result<()>;
+    fn func_return<const V: bool>(&self, func: &mut QbeFunctionBuilder<'a, Self, V>) -> Result<()>;
+    fn get_ud(&self) -> Self::UserData;
+}
+impl<'a> QbeFunctionOutput<'a> for () {
+    type UserData = ();
+    fn prep_call<CallerOut, const V: bool>(_caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, _: &()) -> Result<()>
+    where CallerOut: QbeFunctionOutput<'a> {
+        Ok(())
+    }
+    fn finish_call<CallerOut, const V: bool>(_caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, _: &()) -> Result<Self>
+    where CallerOut: QbeFunctionOutput<'a> {
+        Ok(())
+    }
+    fn prep_func(&self, compiled: &mut String) -> Result<()> {
+        compiled.write_str("function ")?;
+        Ok(())
+    }
+    fn func_return<const V: bool>(&self, func: &mut QbeFunctionBuilder<'a, Self, V>) -> Result<()> {
+        func.compiled.write_str("\tret\n")?;
+        Ok(())
+    }
+    fn get_ud(&self) { }
+}
+impl<'a> QbeFunctionOutput<'a> for QbeValue<'a> {
+    type UserData = QbeType;
+    fn prep_call<CallerOut, const V: bool>(caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, typ: &QbeType) -> Result<()>
+    where CallerOut: QbeFunctionOutput<'a> {
+        let id = caller.local_counter;
+        write!(&mut caller.compiled, "%_{} =", id)?;
+        typ.gen(&mut caller.compiled)?;
+        caller.compiled.write_char(' ')?;
+        Ok(())
+    }
+    fn finish_call<CallerOut, const V: bool>(caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, typ: &QbeType) -> Result<Self>
+    where CallerOut: QbeFunctionOutput<'a> {
+        let id = caller.local_counter;
+        caller.local_counter += 1;
+        Ok(QbeValue::Temporary(*typ, id))
+    }
+    fn prep_func(&self, compiled: &mut String) -> Result<()> {
+        compiled.write_str("function ")?;
+        let typ = self.type_of().promote();
+        typ.gen(compiled)?;
+        compiled.write_char(' ')?;
+        Ok(())
+    }
+    fn func_return<const V: bool>(&self, func: &mut QbeFunctionBuilder<'a, Self, V>) -> Result<()> {
+        func.compiled.write_str("\tret ")?;
+        self.gen(&mut func.compiled)?;
+        func.compiled.write_char('\n')?;
+        Ok(())
+    }
+    fn get_ud(&self) -> QbeType {
+        self.type_of().promote()
     }
 }

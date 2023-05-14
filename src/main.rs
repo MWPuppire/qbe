@@ -1,10 +1,9 @@
 use qbe::*;
 
 fn main() {
-    let mut ctx = QbeContext::<String>::new();
+    let mut ctx = QbeContext::new();
     let decl_opts = QbeDeclBuilder::default().export_as("test").build().unwrap();
-    let params = QbeFunctionParams::default();
-    ctx.function_ext(&params, &decl_opts, |f| {
+    ctx.function_ext(&[], &decl_opts, |f| {
         let start = f.start();
         let end_block = f.forward_declare_block();
         let global_a = f.global_symbol("a");
@@ -22,7 +21,7 @@ fn main() {
         f.jnz(c0, loop_block, &end_block)?;
         f.block_at(end_block)?;
         f.store(i2, global_a)?;
-        Ok(None)
+        Ok(())
     }).unwrap();
     println!("{}", ctx.to_assembly().unwrap());
 }
