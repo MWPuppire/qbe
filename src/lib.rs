@@ -25,16 +25,10 @@ pub enum QbeError {
     IncorrectType(&'static str),
     #[error("argument out of bounds")]
     ArgumentOutOfBounds,
-    #[error("this function doesn't have an env argument")]
-    NoEnvArgument,
     #[error("cannot use `export_as` with a forward declaration")]
     ForwardDeclareName,
     #[error("cannot infer a common type")]
     CannotInferType,
-    #[error("cannot call anything other than a global symbol")]
-    NonGlobalCall,
-    #[error("cannot use `vastart` and `vaarg` outside a variadic function")]
-    NonVariadic,
     #[error("cannot reassign to anything other than a local variable")]
     NonLocalRedefinition,
     #[error("reassignment must use only a single expression returning a local")]

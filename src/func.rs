@@ -217,15 +217,6 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         QbeLabel(1)
     }
 
-    /*
-    pub fn env(&self) -> Result<QbeValue<'a>> {
-        if !self.env {
-            Err(QbeError::NoEnvArgument)
-        } else {
-            Ok(QbeValue::Temporary(QbeType::Long, 0))
-        }
-    }
-    */
     pub fn argument(&self, idx: usize) -> Result<QbeValue<'a>> {
         if self.params.len() >= idx {
             Err(QbeError::ArgumentOutOfBounds)
