@@ -240,7 +240,7 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         self.local_counter += 1;
         QbeValue::Temporary(typ, id)
     }
-    pub fn reassign<F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC>) -> Result<QbeValue<'a>>>(&mut self, val: QbeValue, mutator: F) -> Result<()> {
+    pub fn reassign<F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC>) -> Result<QbeValue<'a>>>(&mut self, val: QbeValue<'a>, mutator: F) -> Result<()> {
         let old_counter = self.local_counter;
         let new_counter = match val {
             QbeValue::Temporary(_, id) => id,

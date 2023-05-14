@@ -3,12 +3,12 @@ use qbe::*;
 fn main() {
     let mut ctx = QbeContext::new();
     let a_opts = QbeDeclBuilder::default().export_as("a").build().unwrap();
-    ctx.global_ext(0, &a_opts).unwrap();
+    let global_a = ctx.global_ext(0, &a_opts).unwrap();
     let test_opts = QbeDeclBuilder::default().export_as("test").build().unwrap();
     let test = ctx.function_ext(&[], &test_opts, |f| {
         let start = f.start();
         let end_block = f.forward_declare_block();
-        let global_a = f.global_symbol("a");
+        // let global_a = f.global_symbol("a");
         let x5 = f.initialize(QbeType::Double);
         let i2 = f.initialize(QbeType::Word);
         let x1 = f.copy(0.1)?;
@@ -25,15 +25,13 @@ fn main() {
         f.store(i2, global_a)?;
         Ok(())
     }).unwrap();
-    /*
     let main_opts = QbeDeclBuilder::default().export_as("main").build().unwrap();
     ctx.function_ext(&[], &main_opts, |f| {
         f.call(test, [0i32])?;
-        let global_a = f.global_symbol("a");
+        // let global_a = f.global_symbol("a");
         let eq = f.eq(global_a, 55)?;
         let out = f.sub(1, eq)?;
         Ok(out)
     }).unwrap();
-    */
     println!("{}", ctx.to_assembly().unwrap());
 }

@@ -223,7 +223,7 @@ impl<'a> QbeValue<'a> {
             Self::ThreadLocalNamed(_) => QbeType::Long,
         }
     }
-    pub fn common_type(&self, with: &'a QbeValue) -> Result<QbeType> {
+    pub fn common_type(&self, with: &'a QbeValue<'a>) -> Result<QbeType> {
         let typ = match self {
             Self::Global(_)           => QbeType::Long,
             Self::Temporary(typ, _)   => *typ,

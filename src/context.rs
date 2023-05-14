@@ -41,7 +41,7 @@ impl QbeContext {
     }
 
     // global variable definitions
-    pub fn global<T: for<'a> Into<QbeData<'a>>>(&mut self, val: T) -> Result<QbeValue> {
+    pub fn global<'a, T: Into<QbeData<'a>>>(&mut self, val: T) -> Result<QbeValue> {
         let data = val.into();
         let id = self.global_counter;
         write!(&mut self.compiled, "data $_{} = {{ ", id)?;
@@ -50,7 +50,7 @@ impl QbeContext {
         self.global_counter += 1;
         Ok(QbeValue::Global(id))
     }
-    pub fn global_at<T: for<'a> Into<QbeData<'a>>>(&mut self, at: QbeForwardDecl, val: T) -> Result<QbeValue> {
+    pub fn global_at<'a, T: Into<QbeData<'a>>>(&mut self, at: QbeForwardDecl, val: T) -> Result<QbeValue> {
         let data = val.into();
         let id = at.0;
         writeln!(&mut self.compiled, "data $_{} = {{ ", id)?;
@@ -58,7 +58,7 @@ impl QbeContext {
         self.compiled.write_str(" }\n")?;
         Ok(QbeValue::Global(id))
     }
-    pub fn global_ext<T: for<'a> Into<QbeData<'a>>>(&mut self, val: T, opts: &QbeDecl) -> Result<QbeValue> {
+    pub fn global_ext<'a, T: Into<QbeData<'a>>>(&mut self, val: T, opts: &QbeDecl) -> Result<QbeValue> {
         let data = val.into();
         if opts.thread_local {
             writeln!(&mut self.compiled, "thread")?;
@@ -94,7 +94,7 @@ impl QbeContext {
             Ok(QbeValue::Global(id))
         }
     }
-    pub fn global_at_ext<T: for<'a> Into<QbeData<'a>>>(&mut self, at: QbeForwardDecl, val: T, opts: &QbeDecl) -> Result<QbeValue> {
+    pub fn global_at_ext<'a, T: Into<QbeData<'a>>>(&mut self, at: QbeForwardDecl, val: T, opts: &QbeDecl) -> Result<QbeValue> {
         let data = val.into();
         let id = at.0;
         if opts.export_as.is_some() {
@@ -219,8 +219,8 @@ impl QbeContext {
     }
 
     // function definition
-    fn make_function<'a, const VARIADIC: bool, Out, F>(&'a mut self, name: QbeFunctionInner, params: &'a [QbeType], builder: F) -> Result<Out::UserData>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<Out, VARIADIC>) -> Result<Out> {
+    fn make_function<'a, const VARIADIC: bool, Out, F>(&'a mut self, name: QbeFunctionInner<'a>, params: &'a [QbeType], builder: F) -> Result<Out::UserData>
+    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC>) -> Result<Out> {
         let mut f = QbeFunctionBuilder::<Out, VARIADIC>::new(params, &mut self.names);
 
         let out = f.build(builder)?;
@@ -241,7 +241,7 @@ impl QbeContext {
         Ok(out.get_ud())
     }
     pub fn function<'a, Out, F>(&'a mut self, params: &'a [QbeType], builder: F) -> Result<impl QbeFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<Out, NON_VARIADIC_FUNC>) -> Result<Out> {
+    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out> {
         let name = QbeFunctionInner::Global(self.global_counter);
         self.global_counter += 1;
         let ud = self.make_function(name, params, builder)?;
@@ -251,7 +251,7 @@ impl QbeContext {
         })
     }
     pub fn function_at<'a, Out, F>(&'a mut self, at: QbeForwardDecl, params: &'a [QbeType], builder: F) -> Result<impl QbeFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<Out, NON_VARIADIC_FUNC>) -> Result<Out> {
+    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out> {
         let name = QbeFunctionInner::Global(at.0);
         let ud = self.make_function(name, params, builder)?;
         Ok(QbeFunction::<Out> {
@@ -260,7 +260,7 @@ impl QbeContext {
         })
     }
     pub fn function_ext<'a, Out, F>(&'a mut self, params: &'a [QbeType], opts: &QbeDecl, builder: F) -> Result<impl QbeFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<Out, NON_VARIADIC_FUNC>) -> Result<Out> {
+    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out> {
         let out_name = if let Some(name) = opts.export_as {
             let s = Box::into_pin(Box::<str>::from(name));
             let ptr = s.deref() as *const str;
@@ -290,7 +290,7 @@ impl QbeContext {
         })
     }
     pub fn function_ext_at<'a, Out, F>(&'a mut self, at: QbeForwardDecl, params: &'a [QbeType], opts: &QbeDecl, builder: F) -> Result<impl QbeFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<Out, NON_VARIADIC_FUNC>) -> Result<Out> {
+    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out> {
         if opts.export_as.is_some() {
             return Err(QbeError::ForwardDeclareName);
         }
@@ -315,7 +315,7 @@ impl QbeContext {
     }
 
     pub fn va_function<'a, Out, F>(&'a mut self, params: &'a [QbeType], builder: F) -> Result<impl QbeVariadicFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<Out, VARIADIC_FUNC>) -> Result<Out> {
+    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out> {
         let name = QbeFunctionInner::Global(self.global_counter);
         self.global_counter += 1;
         let ud = self.make_function(name, params, builder)?;
@@ -325,7 +325,7 @@ impl QbeContext {
         })
     }
     pub fn va_function_at<'a, Out, F>(&'a mut self, at: QbeForwardDecl, params: &'a [QbeType], builder: F) -> Result<impl QbeVariadicFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<Out, VARIADIC_FUNC>) -> Result<Out> {
+    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out> {
         let name = QbeFunctionInner::Global(at.0);
         let ud = self.make_function(name, params, builder)?;
         Ok(QbeVariadicFunction::<Out> {
@@ -334,7 +334,7 @@ impl QbeContext {
         })
     }
     pub fn va_function_ext<'a, Out, F>(&'a mut self, params: &'a [QbeType], opts: &QbeDecl, builder: F) -> Result<impl QbeVariadicFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<Out, VARIADIC_FUNC>) -> Result<Out> {
+    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out> {
         let out_name = if let Some(name) = opts.export_as {
             let s = Box::into_pin(Box::<str>::from(name));
             let ptr = s.deref() as *const str;
@@ -364,7 +364,7 @@ impl QbeContext {
         })
     }
     pub fn va_function_ext_at<'a, Out, F>(&'a mut self, at: QbeForwardDecl, params: &'a [QbeType], opts: &QbeDecl, builder: F) -> Result<impl QbeVariadicFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<Out, VARIADIC_FUNC>) -> Result<Out> {
+    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out> {
         if opts.export_as.is_some() {
             return Err(QbeError::ForwardDeclareName);
         }
