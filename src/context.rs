@@ -1,6 +1,5 @@
 use std::fmt::Write;
 use std::pin::Pin;
-use std::ops::Deref;
 use std::cell::UnsafeCell;
 
 use crate::{Result, QbeError};
@@ -77,9 +76,8 @@ impl QbeContext {
         if let Some(name) = opts.export_as {
             writeln!(&mut this.compiled, "export")?;
             let s = Box::into_pin(Box::<str>::from(name));
-            let ptr = s.deref() as *const str;
             this.names.push(s);
-            let name = unsafe { ptr.as_ref().unwrap() };
+            let name = &this.names[this.names.len() - 1];
             if let Some(align) = opts.align_to {
                 writeln!(&mut this.compiled, "data ${} = align {} {{ ", name, align)?;
             } else {
@@ -149,9 +147,8 @@ impl QbeContext {
         if let Some(name) = opts.export_as {
             writeln!(&mut this.compiled, "export")?;
             let s = Box::into_pin(Box::<str>::from(name));
-            let ptr = s.deref() as *const str;
             this.names.push(s);
-            let name = unsafe { ptr.as_ref().unwrap() };
+            let name = &this.names[this.names.len() - 1];
             if let Some(align) = opts.align_to {
                 writeln!(&mut this.compiled, "data ${} = align {} {{ z {} }}", name, align, size)?;
             } else {
@@ -192,9 +189,8 @@ impl QbeContext {
     pub fn global_symbol(&self, sym: &str) -> QbeValue {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let s = Box::into_pin(Box::<str>::from(sym));
-        let ptr = s.deref() as *const str;
         this.names.push(s);
-        QbeValue::Named(unsafe { ptr.as_ref().unwrap() })
+        QbeValue::Named(&this.names[this.names.len() - 1])
     }
 
     // type definitions
@@ -235,7 +231,7 @@ impl QbeContext {
     }
 
     // function definition
-    fn make_function<'a, const VARIADIC: bool, Out, F>(&'a self, name: QbeFunctionInner<'a>, params: &'a [QbeType], builder: F) -> Result<Out::UserData>
+    pub(crate) fn make_function<'a, const VARIADIC: bool, Out, F>(&'a self, name: impl QbeCodegen<String>, params: &'a [QbeType], builder: F) -> Result<Out::UserData>
     where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC>) -> Result<Out> {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let mut f = QbeFunctionBuilder::<Out, VARIADIC>::new(params, &mut this.names);
@@ -282,9 +278,8 @@ impl QbeContext {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let out_name = if let Some(name) = opts.export_as {
             let s = Box::into_pin(Box::<str>::from(name));
-            let ptr = s.deref() as *const str;
             this.names.push(s);
-            QbeFunctionInner::Named(unsafe { ptr.as_ref().unwrap() })
+            QbeFunctionInner::Named(&this.names[this.names.len() - 1])
         } else {
             let id = this.global_counter;
             QbeFunctionInner::Global(id)
@@ -361,9 +356,8 @@ impl QbeContext {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let out_name = if let Some(name) = opts.export_as {
             let s = Box::into_pin(Box::<str>::from(name));
-            let ptr = s.deref() as *const str;
             this.names.push(s);
-            QbeFunctionInner::Named(unsafe { ptr.as_ref().unwrap() })
+            QbeFunctionInner::Named(&this.names[this.names.len() - 1])
         } else {
             let id = this.global_counter;
             QbeFunctionInner::Global(id)

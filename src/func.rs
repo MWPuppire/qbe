@@ -251,15 +251,17 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
 
     pub fn global_symbol(&mut self, sym: &str) -> QbeValue<'a> {
         let s = Box::into_pin(Box::<str>::from(sym));
-        let ptr = s.deref() as *const str;
         self.names.push(s);
-        QbeValue::Named(unsafe { ptr.as_ref().unwrap() })
+        QbeValue::Named(unsafe {
+            std::mem::transmute(self.names[self.names.len() - 1].deref())
+        })
     }
     pub fn thread_local_symbol(&mut self, sym: &str) -> QbeValue<'a> {
         let s = Box::into_pin(Box::<str>::from(sym));
-        let ptr = s.deref() as *const str;
         self.names.push(s);
-        QbeValue::ThreadLocalNamed(unsafe { ptr.as_ref().unwrap() })
+        QbeValue::ThreadLocalNamed(unsafe {
+            std::mem::transmute(self.names[self.names.len() - 1].deref())
+        })
     }
 
     pub fn block(&mut self) -> Result<QbeLabel> {
