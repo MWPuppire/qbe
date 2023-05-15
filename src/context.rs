@@ -1,7 +1,6 @@
 use std::fmt::Write;
 use std::pin::Pin;
 use std::cell::UnsafeCell;
-
 use crate::{Result, QbeError};
 use crate::value::{
     QbeValue, QbeData, QbeType, QbeForwardDecl, QbeCodegen,
@@ -234,7 +233,7 @@ impl QbeContext {
     pub(crate) fn make_function<'a, const VARIADIC: bool, Out, F>(&'a self, name: impl QbeCodegen<String>, params: &'a [QbeType], builder: F) -> Result<Out::UserData>
     where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC>) -> Result<Out> {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
-        let mut f = QbeFunctionBuilder::<Out, VARIADIC>::new(params, &mut this.names);
+        let mut f = QbeFunctionBuilder::<Out, VARIADIC>::new(params, self);
 
         let out = f.build(builder)?;
         out.prep_func(&mut this.compiled)?;

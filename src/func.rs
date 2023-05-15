@@ -1,10 +1,7 @@
 use std::fmt::Write;
-use std::pin::Pin;
-use std::ops::Deref;
-
-use crate::{Result, QbeError};
-use crate::value::{QbeType, QbeValue, QbeLabel, QbeForwardLabel, QbeCodegen, QbeFunctionOutput};
 use paste::paste;
+use crate::{Result, QbeError, QbeContext};
+use crate::value::{QbeType, QbeValue, QbeLabel, QbeForwardLabel, QbeCodegen, QbeFunctionOutput};
 
 pub const NON_VARIADIC_FUNC: bool = false;
 pub const VARIADIC_FUNC: bool = true;
@@ -193,10 +190,10 @@ pub struct QbeFunctionBuilder<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bo
     block_counter: u32,
     pub(crate) compiled: String,
     returned: Vec<Out::UserData>,
-    names: &'a mut Vec<Pin<Box<str>>>,
+    ctx: &'a QbeContext,
 }
 impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a, Out, VARIADIC> {
-    pub(crate) fn new(params: &'a [QbeType], names: &'a mut Vec<Pin<Box<str>>>) -> QbeFunctionBuilder<'a, Out, VARIADIC> {
+    pub(crate) fn new(params: &'a [QbeType], ctx: &'a QbeContext) -> QbeFunctionBuilder<'a, Out, VARIADIC> {
         QbeFunctionBuilder {
             params,
             local_counter: params.len() as u32,
@@ -204,8 +201,8 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
             block_counter: 2,
             // @_0 is the start block
             compiled: String::from("@_0\n"),
-            names,
             returned: vec![],
+            ctx,
         }
     }
 
@@ -250,18 +247,13 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
     }
 
     pub fn global_symbol(&mut self, sym: &str) -> QbeValue<'a> {
-        let s = Box::into_pin(Box::<str>::from(sym));
-        self.names.push(s);
-        QbeValue::Named(unsafe {
-            std::mem::transmute(self.names[self.names.len() - 1].deref())
-        })
+        self.ctx.global_symbol(sym)
     }
     pub fn thread_local_symbol(&mut self, sym: &str) -> QbeValue<'a> {
-        let s = Box::into_pin(Box::<str>::from(sym));
-        self.names.push(s);
-        QbeValue::ThreadLocalNamed(unsafe {
-            std::mem::transmute(self.names[self.names.len() - 1].deref())
-        })
+        let QbeValue::Named(name) = self.ctx.global_symbol(sym) else {
+            unreachable!()
+        };
+        QbeValue::ThreadLocalNamed(name)
     }
 
     pub fn block(&mut self) -> Result<QbeLabel> {
