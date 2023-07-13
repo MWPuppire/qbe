@@ -1,6 +1,6 @@
+use crate::func::{QbeFunctionBuilder, QbeFunctionCall, QbeVariadicFunctionCall};
+use crate::{QbeError, Result};
 use std::fmt::{self, Write};
-use crate::{Result, QbeError};
-use crate::func::{QbeFunctionCall, QbeVariadicFunctionCall, QbeFunctionBuilder};
 
 pub(crate) trait QbeCodegen<Writer: Write> {
     fn gen(&self, dest: &mut Writer) -> fmt::Result;
@@ -21,14 +21,14 @@ pub enum QbeType {
 impl QbeType {
     pub(crate) fn basic_name(&self) -> &'static str {
         match self {
-            Self::Word           => "w",
-            Self::Long           => "l",
-            Self::Single         => "s",
-            Self::Double         => "d",
-            Self::Byte           => "b",
-            Self::Half           => "h",
-            Self::SignedByte     => "b",
-            Self::SignedHalf     => "h",
+            Self::Word => "w",
+            Self::Long => "l",
+            Self::Single => "s",
+            Self::Double => "d",
+            Self::Byte => "b",
+            Self::Half => "h",
+            Self::SignedByte => "b",
+            Self::SignedHalf => "h",
             Self::UserDefined(_) => "l",
         }
     }
@@ -87,14 +87,14 @@ impl QbeType {
 impl<W: Write> QbeCodegen<W> for QbeType {
     fn gen(&self, d: &mut W) -> fmt::Result {
         match self {
-            Self::Word            => d.write_str("w"),
-            Self::Long            => d.write_str("l"),
-            Self::Single          => d.write_str("s"),
-            Self::Double          => d.write_str("d"),
-            Self::Byte            => d.write_str("ub"),
-            Self::Half            => d.write_str("uh"),
-            Self::SignedByte      => d.write_str("sb"),
-            Self::SignedHalf      => d.write_str("sh"),
+            Self::Word => d.write_str("w"),
+            Self::Long => d.write_str("l"),
+            Self::Single => d.write_str("s"),
+            Self::Double => d.write_str("d"),
+            Self::Byte => d.write_str("ub"),
+            Self::Half => d.write_str("uh"),
+            Self::SignedByte => d.write_str("sb"),
+            Self::SignedHalf => d.write_str("sh"),
             Self::UserDefined(id) => write!(d, ":_{}", id),
         }
     }
@@ -112,11 +112,11 @@ pub enum QbeData<'a> {
 impl<W: Write> QbeCodegen<W> for QbeData<'_> {
     fn gen(&self, d: &mut W) -> fmt::Result {
         match self {
-            Self::String(s)                 => write!(d, "\"{}\"", s.escape_default()),
-            Self::Global(id)                => write!(d, "$_{}", id),
-            Self::OffsetGlobal(id, offset)  => write!(d, "$_{}+{}", id, offset),
-            Self::Constant(typ, val)        => write!(d, "{} {}", typ.basic_name(), val),
-            Self::Named(name)               => write!(d, "${}", name),
+            Self::String(s) => write!(d, "\"{}\"", s.escape_default()),
+            Self::Global(id) => write!(d, "$_{}", id),
+            Self::OffsetGlobal(id, offset) => write!(d, "$_{}+{}", id, offset),
+            Self::Constant(typ, val) => write!(d, "{} {}", typ.basic_name(), val),
+            Self::Named(name) => write!(d, "${}", name),
             Self::OffsetNamed(name, offset) => write!(d, "{}+{}", name, offset),
         }
     }
@@ -179,8 +179,8 @@ impl<'a> From<&'a str> for QbeData<'a> {
 impl<'a> From<QbeValue<'a>> for QbeData<'a> {
     fn from(item: QbeValue<'a>) -> Self {
         match item {
-            QbeValue::Global(id)         => Self::Global(id),
-            QbeValue::Named(name)        => Self::Named(name),
+            QbeValue::Global(id) => Self::Global(id),
+            QbeValue::Named(name) => Self::Named(name),
             _ => panic!("cannot use one of those"),
         }
     }
@@ -216,28 +216,30 @@ pub enum QbeValue<'a> {
 impl<'a> QbeValue<'a> {
     pub fn type_of(&self) -> QbeType {
         match self {
-            Self::Global(_)           => QbeType::Long,
-            Self::Temporary(typ, _)   => *typ,
-            Self::Constant(typ, _)    => *typ,
-            Self::Named(_)            => QbeType::Long,
+            Self::Global(_) => QbeType::Long,
+            Self::Temporary(typ, _) => *typ,
+            Self::Constant(typ, _) => *typ,
+            Self::Named(_) => QbeType::Long,
             Self::ThreadLocalNamed(_) => QbeType::Long,
         }
     }
     pub fn common_type(&self, with: &'a QbeValue<'a>) -> Result<QbeType> {
         let typ = match self {
-            Self::Global(_)           => QbeType::Long,
-            Self::Temporary(typ, _)   => *typ,
-            Self::Constant(_, _)      => return Ok(with.type_of()),
-            Self::Named(_)            => QbeType::Long,
+            Self::Global(_) => QbeType::Long,
+            Self::Temporary(typ, _) => *typ,
+            Self::Constant(_, _) => return Ok(with.type_of()),
+            Self::Named(_) => QbeType::Long,
             Self::ThreadLocalNamed(_) => QbeType::Long,
-        }.promote();
+        }
+        .promote();
         let other = match with {
-            Self::Global(_)           => QbeType::Long,
-            Self::Temporary(typ, _)   => *typ,
-            Self::Constant(_, _)      => return Ok(typ),
-            Self::Named(_)            => QbeType::Long,
+            Self::Global(_) => QbeType::Long,
+            Self::Temporary(typ, _) => *typ,
+            Self::Constant(_, _) => return Ok(typ),
+            Self::Named(_) => QbeType::Long,
             Self::ThreadLocalNamed(_) => QbeType::Long,
-        }.promote();
+        }
+        .promote();
         if typ == other {
             return Ok(typ);
         }
@@ -251,10 +253,10 @@ impl<'a> QbeValue<'a> {
 impl<W: Write> QbeCodegen<W> for QbeValue<'_> {
     fn gen(&self, d: &mut W) -> fmt::Result {
         match self {
-            Self::Global(id)             => write!(d, "$_{}", id),
-            Self::Temporary(_, id)       => write!(d, "%_{}", id),
-            Self::Constant(_, val)       => write!(d, "{}", val),
-            Self::Named(name)            => write!(d, "${}", name),
+            Self::Global(id) => write!(d, "$_{}", id),
+            Self::Temporary(_, id) => write!(d, "%_{}", id),
+            Self::Constant(_, val) => write!(d, "{}", val),
+            Self::Named(name) => write!(d, "${}", name),
             Self::ThreadLocalNamed(name) => write!(d, "thread ${}", name),
         }
     }
@@ -321,7 +323,7 @@ impl<'a> From<&'a str> for QbeValue<'a> {
 impl<'a, Out: QbeFunctionOutput<'a>> From<&QbeFunction<'a, Out>> for QbeValue<'a> {
     fn from(item: &QbeFunction<'a, Out>) -> Self {
         match item.inner {
-            QbeFunctionInner::Global(id)  => Self::Global(id),
+            QbeFunctionInner::Global(id) => Self::Global(id),
             QbeFunctionInner::Named(name) => Self::Named(name),
         }
     }
@@ -329,7 +331,7 @@ impl<'a, Out: QbeFunctionOutput<'a>> From<&QbeFunction<'a, Out>> for QbeValue<'a
 impl<'a, Out: QbeFunctionOutput<'a>> From<&QbeVariadicFunction<'a, Out>> for QbeValue<'a> {
     fn from(item: &QbeVariadicFunction<'a, Out>) -> Self {
         match item.inner {
-            QbeFunctionInner::Global(id)  => Self::Global(id),
+            QbeFunctionInner::Global(id) => Self::Global(id),
             QbeFunctionInner::Named(name) => Self::Named(name),
         }
     }
@@ -362,7 +364,7 @@ pub(crate) enum QbeFunctionInner<'a> {
 impl<'a, W: Write> QbeCodegen<W> for QbeFunctionInner<'a> {
     fn gen(&self, dest: &mut W) -> fmt::Result {
         match self {
-            Self::Global(id)  => write!(dest, "$_{}", id),
+            Self::Global(id) => write!(dest, "$_{}", id),
             Self::Named(name) => write!(dest, "${}", name),
         }
     }
@@ -375,8 +377,16 @@ pub struct QbeFunction<'a, Out: QbeFunctionOutput<'a>> {
 }
 impl<'a, Out: QbeFunctionOutput<'a>> QbeFunctionCall<'a> for QbeFunction<'a, Out> {
     type Output = Out;
-    fn call_on<CallerOut, I, A, const V: bool>(&self, caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, args: I) -> Result<Out>
-    where CallerOut: QbeFunctionOutput<'a>, I: IntoIterator<Item = A>, A: Into<QbeValue<'a>> {
+    fn call_on<CallerOut, I, A, const V: bool>(
+        &self,
+        caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
+        args: I,
+    ) -> Result<Out>
+    where
+        CallerOut: QbeFunctionOutput<'a>,
+        I: IntoIterator<Item = A>,
+        A: Into<QbeValue<'a>>,
+    {
         caller.compiled.write_char('\t')?;
         Out::prep_call(caller, &self.ud)?;
         caller.compiled.write_str("call ")?;
@@ -401,8 +411,17 @@ pub struct QbeVariadicFunction<'a, Out: QbeFunctionOutput<'a>> {
 }
 impl<'a, Out: QbeFunctionOutput<'a>> QbeVariadicFunctionCall<'a> for QbeVariadicFunction<'a, Out> {
     type Output = Out;
-    fn call_va_on<CallerOut, I, A, const V: bool>(&self, caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, args: I, va_args: I) -> Result<Out>
-    where CallerOut: QbeFunctionOutput<'a>, I: IntoIterator<Item = A>, A: Into<QbeValue<'a>> {
+    fn call_va_on<CallerOut, I, A, const V: bool>(
+        &self,
+        caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
+        args: I,
+        va_args: I,
+    ) -> Result<Out>
+    where
+        CallerOut: QbeFunctionOutput<'a>,
+        I: IntoIterator<Item = A>,
+        A: Into<QbeValue<'a>>,
+    {
         caller.compiled.write_char('\t')?;
         Out::prep_call(caller, &self.ud)?;
         caller.compiled.write_str("call ")?;
@@ -430,22 +449,40 @@ impl<'a, Out: QbeFunctionOutput<'a>> QbeVariadicFunctionCall<'a> for QbeVariadic
 
 pub trait QbeFunctionOutput<'a>: Sized + Copy {
     type UserData: PartialEq + Copy;
-    fn prep_call<CallerOut, const V: bool>(caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, ud: &Self::UserData) -> Result<()>
-    where CallerOut: QbeFunctionOutput<'a>;
-    fn finish_call<CallerOut, const V: bool>(caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, ud: &Self::UserData) -> Result<Self>
-    where CallerOut: QbeFunctionOutput<'a>;
+    fn prep_call<CallerOut, const V: bool>(
+        caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
+        ud: &Self::UserData,
+    ) -> Result<()>
+    where
+        CallerOut: QbeFunctionOutput<'a>;
+    fn finish_call<CallerOut, const V: bool>(
+        caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
+        ud: &Self::UserData,
+    ) -> Result<Self>
+    where
+        CallerOut: QbeFunctionOutput<'a>;
     fn prep_func(&self, compiled: &mut String) -> Result<()>;
     fn func_return<const V: bool>(&self, func: &mut QbeFunctionBuilder<'a, Self, V>) -> Result<()>;
     fn get_ud(&self) -> Self::UserData;
 }
 impl<'a> QbeFunctionOutput<'a> for () {
     type UserData = ();
-    fn prep_call<CallerOut, const V: bool>(_caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, _: &()) -> Result<()>
-    where CallerOut: QbeFunctionOutput<'a> {
+    fn prep_call<CallerOut, const V: bool>(
+        _caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
+        _: &(),
+    ) -> Result<()>
+    where
+        CallerOut: QbeFunctionOutput<'a>,
+    {
         Ok(())
     }
-    fn finish_call<CallerOut, const V: bool>(_caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, _: &()) -> Result<Self>
-    where CallerOut: QbeFunctionOutput<'a> {
+    fn finish_call<CallerOut, const V: bool>(
+        _caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
+        _: &(),
+    ) -> Result<Self>
+    where
+        CallerOut: QbeFunctionOutput<'a>,
+    {
         Ok(())
     }
     fn prep_func(&self, compiled: &mut String) -> Result<()> {
@@ -456,20 +493,30 @@ impl<'a> QbeFunctionOutput<'a> for () {
         func.compiled.write_str("\tret\n")?;
         Ok(())
     }
-    fn get_ud(&self) { }
+    fn get_ud(&self) {}
 }
 impl<'a> QbeFunctionOutput<'a> for QbeValue<'a> {
     type UserData = QbeType;
-    fn prep_call<CallerOut, const V: bool>(caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, typ: &QbeType) -> Result<()>
-    where CallerOut: QbeFunctionOutput<'a> {
+    fn prep_call<CallerOut, const V: bool>(
+        caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
+        typ: &QbeType,
+    ) -> Result<()>
+    where
+        CallerOut: QbeFunctionOutput<'a>,
+    {
         let id = caller.local_counter;
         write!(&mut caller.compiled, "%_{} =", id)?;
         typ.gen(&mut caller.compiled)?;
         caller.compiled.write_char(' ')?;
         Ok(())
     }
-    fn finish_call<CallerOut, const V: bool>(caller: &mut QbeFunctionBuilder<'a, CallerOut, V>, typ: &QbeType) -> Result<Self>
-    where CallerOut: QbeFunctionOutput<'a> {
+    fn finish_call<CallerOut, const V: bool>(
+        caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
+        typ: &QbeType,
+    ) -> Result<Self>
+    where
+        CallerOut: QbeFunctionOutput<'a>,
+    {
         let id = caller.local_counter;
         caller.local_counter += 1;
         Ok(QbeValue::Temporary(*typ, id))

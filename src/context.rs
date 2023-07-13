@@ -1,16 +1,15 @@
+use crate::func::{
+    QbeFunctionBuilder, QbeFunctionCall, QbeVariadicFunctionCall, NON_VARIADIC_FUNC, VARIADIC_FUNC,
+};
+use crate::qbe_wrapper::{write_assembly_to_file, write_assembly_to_string, CFile, QbeTarget};
+use crate::value::{
+    QbeCodegen, QbeData, QbeForwardDecl, QbeFunction, QbeFunctionInner, QbeFunctionOutput, QbeType,
+    QbeValue, QbeVariadicFunction,
+};
+use crate::{QbeError, Result};
+use std::cell::UnsafeCell;
 use std::fmt::Write;
 use std::pin::Pin;
-use std::cell::UnsafeCell;
-use crate::{Result, QbeError};
-use crate::value::{
-    QbeValue, QbeData, QbeType, QbeForwardDecl, QbeCodegen,
-    QbeFunctionOutput, QbeFunction, QbeVariadicFunction, QbeFunctionInner
-};
-use crate::func::{
-    QbeFunctionBuilder, QbeFunctionCall, QbeVariadicFunctionCall,
-    VARIADIC_FUNC, NON_VARIADIC_FUNC
-};
-use crate::qbe_wrapper::{QbeTarget, CFile, write_assembly_to_string, write_assembly_to_file};
 
 #[derive(Clone, Debug, Builder)]
 pub struct QbeDecl<'a> {
@@ -53,7 +52,11 @@ impl QbeContext {
         this.global_counter += 1;
         Ok(QbeValue::Global(id))
     }
-    pub fn global_at<'a, T: Into<QbeData<'a>>>(&self, at: QbeForwardDecl, val: T) -> Result<QbeValue> {
+    pub fn global_at<'a, T: Into<QbeData<'a>>>(
+        &self,
+        at: QbeForwardDecl,
+        val: T,
+    ) -> Result<QbeValue> {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let data = val.into();
         let id = at.0;
@@ -98,7 +101,12 @@ impl QbeContext {
             Ok(QbeValue::Global(id))
         }
     }
-    pub fn global_at_ext<'a, T: Into<QbeData<'a>>>(&self, at: QbeForwardDecl, val: T, opts: &QbeDecl) -> Result<QbeValue> {
+    pub fn global_at_ext<'a, T: Into<QbeData<'a>>>(
+        &self,
+        at: QbeForwardDecl,
+        val: T,
+        opts: &QbeDecl,
+    ) -> Result<QbeValue> {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let data = val.into();
         let id = at.0;
@@ -149,7 +157,11 @@ impl QbeContext {
             this.names.push(s);
             let name = &this.names[this.names.len() - 1];
             if let Some(align) = opts.align_to {
-                writeln!(&mut this.compiled, "data ${} = align {} {{ z {} }}", name, align, size)?;
+                writeln!(
+                    &mut this.compiled,
+                    "data ${} = align {} {{ z {} }}",
+                    name, align, size
+                )?;
             } else {
                 writeln!(&mut this.compiled, "data ${} = {{ z {} }}", name, size)?;
             }
@@ -157,7 +169,11 @@ impl QbeContext {
         } else {
             let id = this.global_counter;
             if let Some(align) = opts.align_to {
-                writeln!(&mut this.compiled, "data $_{} = align {} {{ z {} }}", id, align, size)?;
+                writeln!(
+                    &mut this.compiled,
+                    "data $_{} = align {} {{ z {} }}",
+                    id, align, size
+                )?;
             } else {
                 writeln!(&mut this.compiled, "data $_{} = {{ z {} }}", id, size)?;
             }
@@ -165,7 +181,12 @@ impl QbeContext {
             Ok(QbeValue::Global(id))
         }
     }
-    pub fn global_zeroed_at_ext(&self, at: QbeForwardDecl, size: u64, opts: &QbeDecl) -> Result<QbeValue> {
+    pub fn global_zeroed_at_ext(
+        &self,
+        at: QbeForwardDecl,
+        size: u64,
+        opts: &QbeDecl,
+    ) -> Result<QbeValue> {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let id = at.0;
         if opts.export_as.is_some() {
@@ -179,7 +200,11 @@ impl QbeContext {
             writeln!(&mut this.compiled, "section {} {}", sec, flags)?;
         }
         if let Some(align) = opts.align_to {
-            writeln!(&mut this.compiled, "data $_{} = align {} {{ z {} }}", id, align, size)?;
+            writeln!(
+                &mut this.compiled,
+                "data $_{} = align {} {{ z {} }}",
+                id, align, size
+            )?;
         } else {
             writeln!(&mut this.compiled, "data $_{} = {{ z {} }}", id, size)?;
         }
@@ -196,7 +221,11 @@ impl QbeContext {
     pub fn opaque_type(&self, align: u64, size: u64) -> Result<QbeType> {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let id = this.type_counter;
-        writeln!(&mut this.compiled, "type :_{} = align {} {{ {} }}", id, align, size)?;
+        writeln!(
+            &mut this.compiled,
+            "type :_{} = align {} {{ {} }}",
+            id, align, size
+        )?;
         this.type_counter += 1;
         Ok(QbeType::UserDefined(id))
     }
@@ -230,8 +259,16 @@ impl QbeContext {
     }
 
     // function definition
-    pub(crate) fn make_function<'a, const VARIADIC: bool, Out, F>(&'a self, name: impl QbeCodegen<String>, params: &'a [QbeType], builder: F) -> Result<Out::UserData>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC>) -> Result<Out> {
+    pub(crate) fn make_function<'a, const VARIADIC: bool, Out, F>(
+        &'a self,
+        name: impl QbeCodegen<String>,
+        params: &'a [QbeType],
+        builder: F,
+    ) -> Result<Out::UserData>
+    where
+        Out: QbeFunctionOutput<'a>,
+        F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC>) -> Result<Out>,
+    {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let mut f = QbeFunctionBuilder::<Out, VARIADIC>::new(params, self);
 
@@ -252,28 +289,45 @@ impl QbeContext {
         this.compiled.write_str("}\n")?;
         Ok(out.get_ud())
     }
-    pub fn function<'a, Out, F>(&'a self, params: &'a [QbeType], builder: F) -> Result<impl QbeFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out> {
+    pub fn function<'a, Out, F>(
+        &'a self,
+        params: &'a [QbeType],
+        builder: F,
+    ) -> Result<impl QbeFunctionCall<'a> + Copy>
+    where
+        Out: QbeFunctionOutput<'a>,
+        F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out>,
+    {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let name = QbeFunctionInner::Global(this.global_counter);
         let ud = self.make_function(name, params, builder)?;
         this.global_counter += 1;
-        Ok(QbeFunction::<Out> {
-            inner: name,
-            ud,
-        })
+        Ok(QbeFunction::<Out> { inner: name, ud })
     }
-    pub fn function_at<'a, Out, F>(&'a self, at: QbeForwardDecl, params: &'a [QbeType], builder: F) -> Result<impl QbeFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out> {
+    pub fn function_at<'a, Out, F>(
+        &'a self,
+        at: QbeForwardDecl,
+        params: &'a [QbeType],
+        builder: F,
+    ) -> Result<impl QbeFunctionCall<'a> + Copy>
+    where
+        Out: QbeFunctionOutput<'a>,
+        F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out>,
+    {
         let name = QbeFunctionInner::Global(at.0);
         let ud = self.make_function(name, params, builder)?;
-        Ok(QbeFunction::<Out> {
-            inner: name,
-            ud,
-        })
+        Ok(QbeFunction::<Out> { inner: name, ud })
     }
-    pub fn function_ext<'a, Out, F>(&'a self, params: &'a [QbeType], opts: &QbeDecl, builder: F) -> Result<impl QbeFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out> {
+    pub fn function_ext<'a, Out, F>(
+        &'a self,
+        params: &'a [QbeType],
+        opts: &QbeDecl,
+        builder: F,
+    ) -> Result<impl QbeFunctionCall<'a> + Copy>
+    where
+        Out: QbeFunctionOutput<'a>,
+        F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out>,
+    {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let out_name = if let Some(name) = opts.export_as {
             let s = Box::into_pin(Box::<str>::from(name));
@@ -304,8 +358,17 @@ impl QbeContext {
             ud,
         })
     }
-    pub fn function_ext_at<'a, Out, F>(&'a self, at: QbeForwardDecl, params: &'a [QbeType], opts: &QbeDecl, builder: F) -> Result<impl QbeFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out> {
+    pub fn function_ext_at<'a, Out, F>(
+        &'a self,
+        at: QbeForwardDecl,
+        params: &'a [QbeType],
+        opts: &QbeDecl,
+        builder: F,
+    ) -> Result<impl QbeFunctionCall<'a> + Copy>
+    where
+        Out: QbeFunctionOutput<'a>,
+        F: FnOnce(&mut QbeFunctionBuilder<'a, Out, NON_VARIADIC_FUNC>) -> Result<Out>,
+    {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         if opts.export_as.is_some() {
             return Err(QbeError::ForwardDeclareName);
@@ -324,34 +387,48 @@ impl QbeContext {
 
         let name = QbeFunctionInner::Global(at.0);
         let ud = self.make_function(name, params, builder)?;
-        Ok(QbeFunction::<Out> {
-            inner: name,
-            ud,
-        })
+        Ok(QbeFunction::<Out> { inner: name, ud })
     }
 
-    pub fn va_function<'a, Out, F>(&'a self, params: &'a [QbeType], builder: F) -> Result<impl QbeVariadicFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out> {
+    pub fn va_function<'a, Out, F>(
+        &'a self,
+        params: &'a [QbeType],
+        builder: F,
+    ) -> Result<impl QbeVariadicFunctionCall<'a> + Copy>
+    where
+        Out: QbeFunctionOutput<'a>,
+        F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out>,
+    {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let name = QbeFunctionInner::Global(this.global_counter);
         let ud = self.make_function(name, params, builder)?;
         this.global_counter += 1;
-        Ok(QbeVariadicFunction::<Out> {
-            inner: name,
-            ud,
-        })
+        Ok(QbeVariadicFunction::<Out> { inner: name, ud })
     }
-    pub fn va_function_at<'a, Out, F>(&'a self, at: QbeForwardDecl, params: &'a [QbeType], builder: F) -> Result<impl QbeVariadicFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out> {
+    pub fn va_function_at<'a, Out, F>(
+        &'a self,
+        at: QbeForwardDecl,
+        params: &'a [QbeType],
+        builder: F,
+    ) -> Result<impl QbeVariadicFunctionCall<'a> + Copy>
+    where
+        Out: QbeFunctionOutput<'a>,
+        F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out>,
+    {
         let name = QbeFunctionInner::Global(at.0);
         let ud = self.make_function(name, params, builder)?;
-        Ok(QbeVariadicFunction::<Out> {
-            inner: name,
-            ud,
-        })
+        Ok(QbeVariadicFunction::<Out> { inner: name, ud })
     }
-    pub fn va_function_ext<'a, Out, F>(&'a self, params: &'a [QbeType], opts: &QbeDecl, builder: F) -> Result<impl QbeVariadicFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out> {
+    pub fn va_function_ext<'a, Out, F>(
+        &'a self,
+        params: &'a [QbeType],
+        opts: &QbeDecl,
+        builder: F,
+    ) -> Result<impl QbeVariadicFunctionCall<'a> + Copy>
+    where
+        Out: QbeFunctionOutput<'a>,
+        F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out>,
+    {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let out_name = if let Some(name) = opts.export_as {
             let s = Box::into_pin(Box::<str>::from(name));
@@ -382,8 +459,17 @@ impl QbeContext {
             ud,
         })
     }
-    pub fn va_function_ext_at<'a, Out, F>(&'a self, at: QbeForwardDecl, params: &'a [QbeType], opts: &QbeDecl, builder: F) -> Result<impl QbeVariadicFunctionCall<'a> + Copy>
-    where Out: QbeFunctionOutput<'a>, F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out> {
+    pub fn va_function_ext_at<'a, Out, F>(
+        &'a self,
+        at: QbeForwardDecl,
+        params: &'a [QbeType],
+        opts: &QbeDecl,
+        builder: F,
+    ) -> Result<impl QbeVariadicFunctionCall<'a> + Copy>
+    where
+        Out: QbeFunctionOutput<'a>,
+        F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC_FUNC>) -> Result<Out>,
+    {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         if opts.export_as.is_some() {
             return Err(QbeError::ForwardDeclareName);
@@ -402,10 +488,7 @@ impl QbeContext {
 
         let name = QbeFunctionInner::Global(at.0);
         let ud = self.make_function(name, params, builder)?;
-        Ok(QbeVariadicFunction::<Out> {
-            inner: name,
-            ud,
-        })
+        Ok(QbeVariadicFunction::<Out> { inner: name, ud })
     }
 
     pub fn forward_declare(&self) -> QbeForwardDecl {
@@ -425,8 +508,25 @@ impl QbeContext {
         write_assembly_to_file(&compiled, QbeTarget::default(), &f)?;
         Ok(())
     }
+    pub fn write_target_assembly_to_file(
+        self,
+        file_name: &str,
+        target: QbeTarget,
+    ) -> std::result::Result<(), errno::Errno> {
+        let compiled = self.0.into_inner().compiled;
+        let f = CFile::open(file_name, "w\0")?;
+        write_assembly_to_file(&compiled, target, &f)?;
+        Ok(())
+    }
     pub fn to_assembly(self) -> std::result::Result<String, errno::Errno> {
         let compiled = self.0.into_inner().compiled;
         write_assembly_to_string(&compiled, QbeTarget::default())
+    }
+    pub fn to_target_assembly(
+        self,
+        target: QbeTarget,
+    ) -> std::result::Result<String, errno::Errno> {
+        let compiled = self.0.into_inner().compiled;
+        write_assembly_to_string(&compiled, target)
     }
 }

@@ -1,6 +1,6 @@
 extern crate bindgen;
-extern crate glob;
 extern crate cc;
+extern crate glob;
 
 use glob::glob;
 use std::env;
@@ -13,11 +13,11 @@ fn main() {
     let qbe_source_glob = format!("{}/*.c", qbe_path);
     let qbe_arch_glob = format!("{}/*64/*.c", qbe_path);
 
-    let qbe_sources = glob(&qbe_source_glob).unwrap()
+    let qbe_sources = glob(&qbe_source_glob)
+        .unwrap()
         .filter_map(Result::ok)
         .filter(|x| x.file_name() != Some(OsStr::new("main.c")));
-    let qbe_arch = glob(&qbe_arch_glob).unwrap()
-        .filter_map(Result::ok);
+    let qbe_arch = glob(&qbe_arch_glob).unwrap().filter_map(Result::ok);
     cc::Build::new()
         .files(qbe_sources)
         .files(qbe_arch)

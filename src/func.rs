@@ -1,21 +1,36 @@
-use std::fmt::Write;
+use crate::value::{QbeCodegen, QbeForwardLabel, QbeFunctionOutput, QbeLabel, QbeType, QbeValue};
+use crate::{QbeContext, QbeError, Result};
 use paste::paste;
-use crate::{Result, QbeError, QbeContext};
-use crate::value::{QbeType, QbeValue, QbeLabel, QbeForwardLabel, QbeCodegen, QbeFunctionOutput};
+use std::fmt::Write;
 
 pub const NON_VARIADIC_FUNC: bool = false;
 pub const VARIADIC_FUNC: bool = true;
 
 pub trait QbeFunctionCall<'a> {
     type Output: QbeFunctionOutput<'a>;
-    fn call_on<Out, I, A, const V: bool>(&self, caller: &mut QbeFunctionBuilder<'a, Out, V>, args: I) -> Result<Self::Output>
-    where Out: QbeFunctionOutput<'a>, I: IntoIterator<Item = A>, A: Into<QbeValue<'a>>;
+    fn call_on<Out, I, A, const V: bool>(
+        &self,
+        caller: &mut QbeFunctionBuilder<'a, Out, V>,
+        args: I,
+    ) -> Result<Self::Output>
+    where
+        Out: QbeFunctionOutput<'a>,
+        I: IntoIterator<Item = A>,
+        A: Into<QbeValue<'a>>;
 }
 
 pub trait QbeVariadicFunctionCall<'a> {
     type Output: QbeFunctionOutput<'a>;
-    fn call_va_on<Out, I, A, const V: bool>(&self, caller: &mut QbeFunctionBuilder<'a, Out, V>, args: I, va_args: I) -> Result<Self::Output>
-    where Out: QbeFunctionOutput<'a>, I: IntoIterator<Item = A>, A: Into<QbeValue<'a>>;
+    fn call_va_on<Out, I, A, const V: bool>(
+        &self,
+        caller: &mut QbeFunctionBuilder<'a, Out, V>,
+        args: I,
+        va_args: I,
+    ) -> Result<Self::Output>
+    where
+        Out: QbeFunctionOutput<'a>,
+        I: IntoIterator<Item = A>,
+        A: Into<QbeValue<'a>>;
 }
 
 macro_rules! unop {
@@ -180,7 +195,7 @@ macro_rules! cmp_op {
                 Ok(QbeValue::Temporary(QbeType::Word, id))
             }
         }
-    }
+    };
 }
 
 #[derive(Debug)]
@@ -193,7 +208,10 @@ pub struct QbeFunctionBuilder<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bo
     ctx: &'a QbeContext,
 }
 impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a, Out, VARIADIC> {
-    pub(crate) fn new(params: &'a [QbeType], ctx: &'a QbeContext) -> QbeFunctionBuilder<'a, Out, VARIADIC> {
+    pub(crate) fn new(
+        params: &'a [QbeType],
+        ctx: &'a QbeContext,
+    ) -> QbeFunctionBuilder<'a, Out, VARIADIC> {
         QbeFunctionBuilder {
             params,
             local_counter: params.len() as u32,
@@ -219,7 +237,10 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
             Err(QbeError::ArgumentOutOfBounds)
         } else {
             // user-defined types are passed as pointers
-            Ok(QbeValue::Temporary(self.params[idx].pointer_ud(), idx.try_into().unwrap()))
+            Ok(QbeValue::Temporary(
+                self.params[idx].pointer_ud(),
+                idx.try_into().unwrap(),
+            ))
         }
     }
 
@@ -228,7 +249,13 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         self.local_counter += 1;
         QbeValue::Temporary(typ, id)
     }
-    pub fn reassign<F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC>) -> Result<QbeValue<'a>>>(&mut self, val: QbeValue<'a>, mutator: F) -> Result<()> {
+    pub fn reassign<
+        F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC>) -> Result<QbeValue<'a>>,
+    >(
+        &mut self,
+        val: QbeValue<'a>,
+        mutator: F,
+    ) -> Result<()> {
         let old_counter = self.local_counter;
         let new_counter = match val {
             QbeValue::Temporary(_, id) => id,
@@ -237,9 +264,11 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         self.local_counter = new_counter;
         let out = mutator(self)?;
         match out {
-            QbeValue::Temporary(_, id) => if id != new_counter {
-                return Err(QbeError::ReassignmentSingleExpr);
-            },
+            QbeValue::Temporary(_, id) => {
+                if id != new_counter {
+                    return Err(QbeError::ReassignmentSingleExpr);
+                }
+            }
             _ => return Err(QbeError::ReassignmentSingleExpr),
         };
         self.local_counter = old_counter;
@@ -274,14 +303,31 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
     }
 
     // phi
-    pub fn phi<X, XL, Y, YL>(&mut self, path1: XL, val1: X, path2: YL, val2: Y) -> Result<QbeValue<'a>>
-    where X: Into<QbeValue<'a>>, XL: Into<QbeLabel>, Y: Into<QbeValue<'a>>, YL: Into<QbeLabel> {
+    pub fn phi<X, XL, Y, YL>(
+        &mut self,
+        path1: XL,
+        val1: X,
+        path2: YL,
+        val2: Y,
+    ) -> Result<QbeValue<'a>>
+    where
+        X: Into<QbeValue<'a>>,
+        XL: Into<QbeLabel>,
+        Y: Into<QbeValue<'a>>,
+        YL: Into<QbeLabel>,
+    {
         let id = self.local_counter;
         let val1 = val1.into();
         let val2 = val2.into();
         let t = val1.common_type(&val2)?;
         let t = t.promote();
-        write!(&mut self.compiled, "\t%_{} ={} phi @_{} ", id, t.basic_name(), path1.into().0)?;
+        write!(
+            &mut self.compiled,
+            "\t%_{} ={} phi @_{} ",
+            id,
+            t.basic_name(),
+            path1.into().0
+        )?;
         val1.gen(&mut self.compiled)?;
         write!(&mut self.compiled, ", @_{} ", path2.into().0)?;
         val2.gen(&mut self.compiled)?;
@@ -289,11 +335,29 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t, id))
     }
-    pub fn phi_t<X, XL, Y, YL>(&mut self, path1: XL, val1: X, path2: YL, val2: Y, t: QbeType) -> Result<QbeValue<'a>>
-    where X: Into<QbeValue<'a>>, XL: Into<QbeLabel>, Y: Into<QbeValue<'a>>, YL: Into<QbeLabel> {
+    pub fn phi_t<X, XL, Y, YL>(
+        &mut self,
+        path1: XL,
+        val1: X,
+        path2: YL,
+        val2: Y,
+        t: QbeType,
+    ) -> Result<QbeValue<'a>>
+    where
+        X: Into<QbeValue<'a>>,
+        XL: Into<QbeLabel>,
+        Y: Into<QbeValue<'a>>,
+        YL: Into<QbeLabel>,
+    {
         let id = self.local_counter;
         let t = t.promote();
-        write!(&mut self.compiled, "\t%_{} ={} phi @_{} ", id, t.basic_name(), path1.into().0)?;
+        write!(
+            &mut self.compiled,
+            "\t%_{} ={} phi @_{} ",
+            id,
+            t.basic_name(),
+            path1.into().0
+        )?;
         val1.into().gen(&mut self.compiled)?;
         write!(&mut self.compiled, ", @_{} ", path2.into().0)?;
         val2.into().gen(&mut self.compiled)?;
@@ -304,99 +368,110 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
 
     // call
     pub fn call<F, I, A>(&mut self, func: F, args: I) -> Result<F::Output>
-    where F: QbeFunctionCall<'a>, I: IntoIterator<Item = A>, A: Into<QbeValue<'a>> {
+    where
+        F: QbeFunctionCall<'a>,
+        I: IntoIterator<Item = A>,
+        A: Into<QbeValue<'a>>,
+    {
         func.call_on(self, args)
     }
     pub fn call_va<F, I, A>(&mut self, func: F, args: I, va_args: I) -> Result<F::Output>
-    where F: QbeVariadicFunctionCall<'a>, I: IntoIterator<Item = A>, A: Into<QbeValue<'a>> {
+    where
+        F: QbeVariadicFunctionCall<'a>,
+        I: IntoIterator<Item = A>,
+        A: Into<QbeValue<'a>>,
+    {
         func.call_va_on(self, args, va_args)
     }
 
     // arithmetic instructions
-    binop!{'a, add, x, y, numeric, x.common_type(&y)?}
-    binop!{'a, sub, x, y, numeric, x.common_type(&y)?}
-    binop!{'a, div, x, y, numeric, x.common_type(&y)?}
-    binop!{'a, mul, x, y, numeric, x.common_type(&y)?}
-    unop!{'a, neg, val, numeric, val.type_of()}
-    binop!{'a, udiv, x, y, integer, x.common_type(&y)?}
-    binop!{'a, rem, x, y, integer, x.common_type(&y)?}
-    binop!{'a, urem, x, y, integer, x.common_type(&y)?}
-    binop!{'a, or, x, y, integer, x.common_type(&y)?}
-    binop!{'a, xor, x, y, integer, x.common_type(&y)?}
-    binop!{'a, and, x, y, integer, x.common_type(&y)?}
-    binop!{'a, sar, x, y, integer, x.type_of()}
-    binop!{'a, shr, x, y, integer, x.type_of()}
-    binop!{'a, shl, x, y, integer, x.type_of()}
+    binop! {'a, add, x, y, numeric, x.common_type(&y)?}
+    binop! {'a, sub, x, y, numeric, x.common_type(&y)?}
+    binop! {'a, div, x, y, numeric, x.common_type(&y)?}
+    binop! {'a, mul, x, y, numeric, x.common_type(&y)?}
+    unop! {'a, neg, val, numeric, val.type_of()}
+    binop! {'a, udiv, x, y, integer, x.common_type(&y)?}
+    binop! {'a, rem, x, y, integer, x.common_type(&y)?}
+    binop! {'a, urem, x, y, integer, x.common_type(&y)?}
+    binop! {'a, or, x, y, integer, x.common_type(&y)?}
+    binop! {'a, xor, x, y, integer, x.common_type(&y)?}
+    binop! {'a, and, x, y, integer, x.common_type(&y)?}
+    binop! {'a, sar, x, y, integer, x.type_of()}
+    binop! {'a, shr, x, y, integer, x.type_of()}
+    binop! {'a, shl, x, y, integer, x.type_of()}
 
     // comparison instructions
-    cmp_op!{'a, eq, any}
-    cmp_op!{'a, ne, any}
-    cmp_op!{'a, sle, integer}
-    cmp_op!{'a, slt, integer}
-    cmp_op!{'a, sge, integer}
-    cmp_op!{'a, sgt, integer}
-    cmp_op!{'a, ule, integer}
-    cmp_op!{'a, ult, integer}
-    cmp_op!{'a, uge, integer}
-    cmp_op!{'a, ugt, integer}
-    cmp_op!{'a, le, floating}
-    cmp_op!{'a, lt, floating}
-    cmp_op!{'a, ge, floating}
-    cmp_op!{'a, gt, floating}
-    cmp_op!{'a, o, floating}
-    cmp_op!{'a, uo, floating}
+    cmp_op! {'a, eq, any}
+    cmp_op! {'a, ne, any}
+    cmp_op! {'a, sle, integer}
+    cmp_op! {'a, slt, integer}
+    cmp_op! {'a, sge, integer}
+    cmp_op! {'a, sgt, integer}
+    cmp_op! {'a, ule, integer}
+    cmp_op! {'a, ult, integer}
+    cmp_op! {'a, uge, integer}
+    cmp_op! {'a, ugt, integer}
+    cmp_op! {'a, le, floating}
+    cmp_op! {'a, lt, floating}
+    cmp_op! {'a, ge, floating}
+    cmp_op! {'a, gt, floating}
+    cmp_op! {'a, o, floating}
+    cmp_op! {'a, uo, floating}
 
     // conversion instructions
-    unop!{'a, extsw, val, integer, QbeType::Long}
-    unop!{'a, extuw, val, integer, QbeType::Long}
-    unop!{'a, extsh, val, integer, QbeType::Long}
-    unop!{'a, extuh, val, integer, QbeType::Long}
-    unop!{'a, extsb, val, integer, QbeType::Long}
-    unop!{'a, extub, val, integer, QbeType::Long}
-    unop!{'a, extsh_w, val, integer, QbeType::Word, extsh}
-    unop!{'a, extuh_w, val, integer, QbeType::Word, extuh}
-    unop!{'a, extsb_w, val, integer, QbeType::Word, extsb}
-    unop!{'a, extub_w, val, integer, QbeType::Word, extub}
-    unop!{'a, exts, val, floating, QbeType::Double}
-    unop!{'a, truncd, val, floating, QbeType::Single}
-    unop!{'a, stosi, val, single, QbeType::Long}
-    unop!{'a, stoui, val, single, QbeType::Long}
-    unop!{'a, dtosi, val, double, QbeType::Long}
-    unop!{'a, dtoui, val, double, QbeType::Long}
-    unop!{'a, stosi_w, val, single, QbeType::Word, stosi}
-    unop!{'a, stoui_w, val, single, QbeType::Word, stoui}
-    unop!{'a, dtosi_w, val, double, QbeType::Word, dtosi}
-    unop!{'a, dtoui_w, val, double, QbeType::Word, dtoui}
-    unop!{'a, swtof, val, word, QbeType::Double}
-    unop!{'a, uwtof, val, word, QbeType::Double}
-    unop!{'a, sltof, val, long, QbeType::Double}
-    unop!{'a, ultof, val, long, QbeType::Double}
-    unop!{'a, swtof_s, val, word, QbeType::Single, swtof}
-    unop!{'a, uwtof_s, val, word, QbeType::Single, uwtof}
-    unop!{'a, sltof_s, val, long, QbeType::Single, sltof}
-    unop!{'a, ultof_s, val, long, QbeType::Single, ultof}
+    unop! {'a, extsw, val, integer, QbeType::Long}
+    unop! {'a, extuw, val, integer, QbeType::Long}
+    unop! {'a, extsh, val, integer, QbeType::Long}
+    unop! {'a, extuh, val, integer, QbeType::Long}
+    unop! {'a, extsb, val, integer, QbeType::Long}
+    unop! {'a, extub, val, integer, QbeType::Long}
+    unop! {'a, extsh_w, val, integer, QbeType::Word, extsh}
+    unop! {'a, extuh_w, val, integer, QbeType::Word, extuh}
+    unop! {'a, extsb_w, val, integer, QbeType::Word, extsb}
+    unop! {'a, extub_w, val, integer, QbeType::Word, extub}
+    unop! {'a, exts, val, floating, QbeType::Double}
+    unop! {'a, truncd, val, floating, QbeType::Single}
+    unop! {'a, stosi, val, single, QbeType::Long}
+    unop! {'a, stoui, val, single, QbeType::Long}
+    unop! {'a, dtosi, val, double, QbeType::Long}
+    unop! {'a, dtoui, val, double, QbeType::Long}
+    unop! {'a, stosi_w, val, single, QbeType::Word, stosi}
+    unop! {'a, stoui_w, val, single, QbeType::Word, stoui}
+    unop! {'a, dtosi_w, val, double, QbeType::Word, dtosi}
+    unop! {'a, dtoui_w, val, double, QbeType::Word, dtoui}
+    unop! {'a, swtof, val, word, QbeType::Double}
+    unop! {'a, uwtof, val, word, QbeType::Double}
+    unop! {'a, sltof, val, long, QbeType::Double}
+    unop! {'a, ultof, val, long, QbeType::Double}
+    unop! {'a, swtof_s, val, word, QbeType::Single, swtof}
+    unop! {'a, uwtof_s, val, word, QbeType::Single, uwtof}
+    unop! {'a, sltof_s, val, long, QbeType::Single, sltof}
+    unop! {'a, ultof_s, val, long, QbeType::Single, ultof}
 
     // copy and cast
-    unop!{'a, copy, val, any, val.type_of()}
-    unop!{'a, cast, val, numeric, val.type_of().promote().cast()}
+    unop! {'a, copy, val, any, val.type_of()}
+    unop! {'a, cast, val, numeric, val.type_of().promote().cast()}
 
     // memory instructions
     pub fn store<X, Y>(&mut self, val: X, to: Y) -> Result<()>
-    where X: Into<QbeValue<'a>>, Y: Into<QbeValue<'a>> {
+    where
+        X: Into<QbeValue<'a>>,
+        Y: Into<QbeValue<'a>>,
+    {
         let to = to.into();
         if !to.type_of().is_pointer() {
             return Err(QbeError::IncorrectType("pointer"));
         }
         let val = val.into();
         let typ = match val.type_of() {
-            QbeType::Word           => "w",
-            QbeType::Long           => "l",
-            QbeType::Single         => "s",
-            QbeType::Double         => "d",
-            QbeType::Byte           => "b",
-            QbeType::Half           => "h",
-            QbeType::SignedByte     => "b",
-            QbeType::SignedHalf     => "h",
+            QbeType::Word => "w",
+            QbeType::Long => "l",
+            QbeType::Single => "s",
+            QbeType::Double => "d",
+            QbeType::Byte => "b",
+            QbeType::Half => "h",
+            QbeType::SignedByte => "b",
+            QbeType::SignedHalf => "h",
             QbeType::UserDefined(_) => "l",
         };
         write!(&mut self.compiled, "\tstore{} ", typ)?;
@@ -407,7 +482,10 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         Ok(())
     }
     pub fn store_t<X, Y>(&mut self, val: X, to: Y, t: QbeType) -> Result<()>
-    where X: Into<QbeValue<'a>>, Y: Into<QbeValue<'a>> {
+    where
+        X: Into<QbeValue<'a>>,
+        Y: Into<QbeValue<'a>>,
+    {
         let to = to.into();
         if !to.type_of().is_pointer() {
             return Err(QbeError::IncorrectType("pointer"));
@@ -440,7 +518,11 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         self.local_counter += 1;
         Ok(QbeValue::Temporary(t.promote(), id))
     }
-    pub fn load_signed<T: Into<QbeValue<'a>>>(&mut self, from: T, t: QbeType) -> Result<QbeValue<'a>> {
+    pub fn load_signed<T: Into<QbeValue<'a>>>(
+        &mut self,
+        from: T,
+        t: QbeType,
+    ) -> Result<QbeValue<'a>> {
         let id = self.local_counter;
         let from = from.into();
         if !from.type_of().is_pointer() {
@@ -461,7 +543,11 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         Ok(QbeValue::Temporary(t.promote(), id))
     }
     pub fn blit<X, Y, Z>(&mut self, src: X, dst: Y, size: Z) -> Result<()>
-    where X: Into<QbeValue<'a>>, Y: Into<QbeValue<'a>>, Z: Into<QbeValue<'a>> {
+    where
+        X: Into<QbeValue<'a>>,
+        Y: Into<QbeValue<'a>>,
+        Z: Into<QbeValue<'a>>,
+    {
         let src = src.into();
         if !src.type_of().is_pointer() {
             return Err(QbeError::IncorrectType("pointer"));
@@ -483,9 +569,9 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         self.compiled.write_char('\n')?;
         Ok(())
     }
-    unop!{'a, alloc4, val, integer, QbeType::Long}
-    unop!{'a, alloc8, val, integer, QbeType::Long}
-    unop!{'a, alloc16, val, integer, QbeType::Long}
+    unop! {'a, alloc4, val, integer, QbeType::Long}
+    unop! {'a, alloc8, val, integer, QbeType::Long}
+    unop! {'a, alloc16, val, integer, QbeType::Long}
 
     // jumps
     pub fn jmp<T: Into<QbeLabel>>(&mut self, to: T) -> Result<()> {
@@ -493,10 +579,19 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         Ok(())
     }
     pub fn jnz<T, YL, NL>(&mut self, cond: T, yes: YL, no: NL) -> Result<()>
-    where T: Into<QbeValue<'a>>, YL: Into<QbeLabel>, NL: Into<QbeLabel> {
+    where
+        T: Into<QbeValue<'a>>,
+        YL: Into<QbeLabel>,
+        NL: Into<QbeLabel>,
+    {
         self.compiled.write_str("\tjnz ")?;
         cond.into().gen(&mut self.compiled)?;
-        writeln!(&mut self.compiled, ", @_{}, @_{}", yes.into().0, no.into().0)?;
+        writeln!(
+            &mut self.compiled,
+            ", @_{}, @_{}",
+            yes.into().0,
+            no.into().0
+        )?;
         Ok(())
     }
     pub fn hlt(&mut self) -> Result<()> {
@@ -512,7 +607,9 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
     }
 
     pub(crate) fn build<F>(&mut self, builder: F) -> Result<Out>
-    where F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC>) -> Result<Out> {
+    where
+        F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC>) -> Result<Out>,
+    {
         let ret = builder(self)?;
         let associated = ret.get_ud();
 

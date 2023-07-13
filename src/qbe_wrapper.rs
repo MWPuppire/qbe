@@ -5,11 +5,11 @@
 
 include!(concat!(env!("OUT_DIR"), "/qbe-bindings.rs"));
 
-use std::mem::{MaybeUninit, ManuallyDrop};
+use errno::{errno, Errno};
+use libc::*;
+use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ptr::NonNull;
 use std::sync::Mutex;
-use libc::*;
-use errno::{Errno, errno};
 
 #[export_name = "T"]
 static mut TARGET: MaybeUninit<Target> = MaybeUninit::uninit();
@@ -22,7 +22,10 @@ pub(crate) struct CFile(pub(crate) NonNull<FILE>);
 impl CFile {
     pub(crate) fn open(name: &str, mode: &str) -> Result<Self, Errno> {
         unsafe {
-            let file = fopen(name.as_ptr() as *const c_char, mode.as_ptr() as *const c_char);
+            let file = fopen(
+                name.as_ptr() as *const c_char,
+                mode.as_ptr() as *const c_char,
+            );
             if let Some(nonnull) = NonNull::new(file) {
                 Ok(CFile(nonnull))
             } else {
@@ -46,7 +49,7 @@ impl CFile {
             let file = fmemopen(
                 buf.as_ptr() as *mut c_void,
                 buf.len() as size_t,
-                "r\0".as_ptr() as *const c_char
+                "r\0".as_ptr() as *const c_char,
             );
             if let Some(nonnull) = NonNull::new(file) {
                 Ok(CFile(nonnull))
@@ -59,7 +62,12 @@ impl CFile {
     pub(crate) fn read_from_buffer(buf: &[u8]) -> Result<Self, Errno> {
         unsafe {
             let temp = Self::temporary()?;
-            let written = fwrite(buf.as_ptr() as *const c_void, 1, buf.len() as u64, temp.file());
+            let written = fwrite(
+                buf.as_ptr() as *const c_void,
+                1,
+                buf.len() as u64,
+                temp.file(),
+            );
             if written < buf.len() {
                 return Err(errno());
             }
@@ -161,7 +169,11 @@ extern "C" fn func(f: *mut Fn) {
     }
 }
 
-pub(crate) fn write_assembly_to_file(code: &str, target: QbeTarget, dest: &CFile) -> Result<(), Errno> {
+pub(crate) fn write_assembly_to_file(
+    code: &str,
+    target: QbeTarget,
+    dest: &CFile,
+) -> Result<(), Errno> {
     unsafe {
         let mut file = OUTF.lock().unwrap();
         *file = dest.file();
@@ -170,7 +182,12 @@ pub(crate) fn write_assembly_to_file(code: &str, target: QbeTarget, dest: &CFile
         TARGET = MaybeUninit::new(target.target());
 
         let infile = CFile::read_from_buffer(code.as_bytes())?;
-        parse(infile.file(), "-\0".as_ptr() as *mut c_char, Some(data), Some(func));
+        parse(
+            infile.file(),
+            "-\0".as_ptr() as *mut c_char,
+            Some(data),
+            Some(func),
+        );
         (T.emitfin.unwrap())(*file);
         Ok(())
     }
@@ -186,7 +203,12 @@ pub(crate) fn write_assembly_to_string(code: &str, target: QbeTarget) -> Result<
         TARGET = MaybeUninit::new(target.target());
 
         let infile = CFile::read_from_buffer(code.as_bytes())?;
-        parse(infile.file(), "-\0".as_ptr() as *mut c_char, Some(data), Some(func));
+        parse(
+            infile.file(),
+            "-\0".as_ptr() as *mut c_char,
+            Some(data),
+            Some(func),
+        );
         (T.emitfin.unwrap())(*file);
 
         let out_len = temp.len()?;

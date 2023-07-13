@@ -3,21 +3,21 @@ extern crate thiserror;
 #[macro_use]
 extern crate derive_builder;
 extern crate cfg_if;
+extern crate errno;
 extern crate libc;
 extern crate paste;
-extern crate errno;
 
-mod value;
-mod func;
 mod context;
+mod func;
 mod qbe_wrapper;
+mod value;
 
-pub use value::*;
-pub use func::*;
 pub use context::{QbeContext, QbeDeclBuilder};
+pub use func::*;
+pub use qbe_wrapper::QbeTarget;
+pub use value::*;
 
-#[derive(Debug)]
-#[derive(Error)]
+#[derive(Debug, Error)]
 pub enum QbeError {
     #[error("unknown error while compiling")]
     CompileError(#[from] std::fmt::Error),
