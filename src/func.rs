@@ -224,14 +224,17 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         }
     }
 
+    #[inline]
     pub fn start(&self) -> QbeLabel {
         QbeLabel(0)
     }
 
+    #[inline]
     pub fn end(&self) -> QbeLabel {
         QbeLabel(1)
     }
 
+    #[inline]
     pub fn argument(&self, idx: usize) -> Result<QbeValue<'a>> {
         if self.params.len() >= idx {
             Err(QbeError::ArgumentOutOfBounds)
@@ -244,6 +247,7 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         }
     }
 
+    #[inline]
     pub fn initialize(&mut self, typ: QbeType) -> QbeValue<'a> {
         let id = self.local_counter;
         self.local_counter += 1;
@@ -275,9 +279,11 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         Ok(())
     }
 
+    #[inline]
     pub fn global_symbol(&mut self, sym: &str) -> QbeValue<'a> {
         self.ctx.global_symbol(sym)
     }
+    #[inline]
     pub fn thread_local_symbol(&mut self, sym: &str) -> QbeValue<'a> {
         let QbeValue::Named(name) = self.ctx.global_symbol(sym) else {
             unreachable!()
@@ -285,17 +291,20 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         QbeValue::ThreadLocalNamed(name)
     }
 
+    #[inline]
     pub fn block(&mut self) -> Result<QbeLabel> {
         let id = self.block_counter;
         writeln!(&mut self.compiled, "@_{}", id)?;
         self.block_counter += 1;
         Ok(QbeLabel(id))
     }
+    #[inline]
     pub fn block_at(&mut self, at: QbeForwardLabel) -> Result<QbeLabel> {
         let id = at.0;
         writeln!(&mut self.compiled, "@_{}", id)?;
         Ok(QbeLabel(id))
     }
+    #[inline]
     pub fn forward_declare_block(&mut self) -> QbeForwardLabel {
         let id = self.block_counter;
         self.block_counter += 1;
@@ -367,6 +376,7 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
     }
 
     // call
+    #[inline]
     pub fn call<F, I, A>(&mut self, func: F, args: I) -> Result<F::Output>
     where
         F: QbeFunctionCall<'a>,
@@ -375,6 +385,7 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
     {
         func.call_on(self, args)
     }
+    #[inline]
     pub fn call_va<F, I, A>(&mut self, func: F, args: I, va_args: I) -> Result<F::Output>
     where
         F: QbeVariadicFunctionCall<'a>,
@@ -574,6 +585,7 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
     unop! {'a, alloc16, val, integer, QbeType::Long}
 
     // jumps
+    #[inline]
     pub fn jmp<T: Into<QbeLabel>>(&mut self, to: T) -> Result<()> {
         writeln!(&mut self.compiled, "\tjmp @_{}", to.into().0)?;
         Ok(())
@@ -594,11 +606,13 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
         )?;
         Ok(())
     }
+    #[inline]
     pub fn hlt(&mut self) -> Result<()> {
         self.compiled.write_str("\thlt\n")?;
         Ok(())
     }
 
+    #[inline]
     pub fn early_return<T: Into<Out>>(&mut self, val: T) -> Result<()> {
         let val = val.into();
         val.func_return(self)?;

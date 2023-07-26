@@ -7,6 +7,7 @@ include!(concat!(env!("OUT_DIR"), "/qbe-bindings.rs"));
 
 use errno::{errno, Errno};
 use libc::*;
+use std::ffi::CString;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ptr::NonNull;
 use std::sync::Mutex;
@@ -22,8 +23,9 @@ pub(crate) struct CFile(pub(crate) NonNull<FILE>);
 impl CFile {
     pub(crate) fn open(name: &str, mode: &str) -> Result<Self, Errno> {
         unsafe {
+            let name = CString::new(name).expect("File names shouldn't contain a NULL");
             let file = fopen(
-                name.as_ptr() as *const c_char,
+                name.as_ptr(),
                 mode.as_ptr() as *const c_char,
             );
             if let Some(nonnull) = NonNull::new(file) {
@@ -78,6 +80,7 @@ impl CFile {
         }
     }
 
+    #[inline]
     pub(crate) fn file(&self) -> *mut FILE {
         self.0.as_ptr()
     }
@@ -99,8 +102,11 @@ impl CFile {
     }
 }
 impl Drop for CFile {
+    #[inline]
     fn drop(&mut self) {
         unsafe {
+            // SAFETY: constructors for `CFile` fail rather than return an
+            // invalid file.
             // just ignore it if it fails; `drop` can't return anything anyway
             fclose(self.0.as_ptr());
         }
@@ -109,6 +115,9 @@ impl Drop for CFile {
 
 extern "C" fn data(d: *mut Dat) {
     unsafe {
+        // SAFETY: `data` will only be called from `write_assembly_to_file` or
+        // `write_assembly_to_string`, which acquires the lock (and blocks until
+        // it can).
         let file = OUTF.get_mut().unwrap();
         emitdat(d, *file);
         if ((*d).type_ == Dat_DEnd) {
@@ -119,6 +128,9 @@ extern "C" fn data(d: *mut Dat) {
 }
 extern "C" fn func(f: *mut Fn) {
     unsafe {
+        // SAFETY: `func` will only be called from `write_assembly_to_file` or
+        // `write_assembly_to_string`, which acquires the lock (and blocks until
+        // it can).
         let file = OUTF.get_mut().unwrap();
         (T.abi0.unwrap())(f);
         fillrpo(f);
@@ -240,6 +252,7 @@ pub enum QbeTarget {
     RiscV64,
 }
 impl QbeTarget {
+    #[inline]
     fn target(&self) -> Target {
         unsafe {
             match self {
@@ -253,6 +266,7 @@ impl QbeTarget {
     }
 }
 impl Default for QbeTarget {
+    #[inline]
     fn default() -> Self {
         cfg_if::cfg_if! {
             if #[cfg(all(target_arch = "x86_64", any(target_os = "macos", target_os = "ios")))] {

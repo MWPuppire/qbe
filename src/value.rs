@@ -19,6 +19,7 @@ pub enum QbeType {
     UserDefined(u32),
 }
 impl QbeType {
+    #[inline]
     pub(crate) fn basic_name(&self) -> &'static str {
         match self {
             Self::Word => "w",
@@ -32,6 +33,7 @@ impl QbeType {
             Self::UserDefined(_) => "l",
         }
     }
+    #[inline]
     pub(crate) fn promote(&self) -> QbeType {
         match self {
             Self::Byte => Self::Word,
@@ -41,12 +43,14 @@ impl QbeType {
             x => *x,
         }
     }
+    #[inline]
     pub(crate) fn pointer_ud(&self) -> QbeType {
         match self {
             Self::UserDefined(_) => Self::Long,
             x => *x,
         }
     }
+    #[inline]
     pub(crate) fn cast(&self) -> QbeType {
         match self {
             Self::Word => Self::Single,
@@ -56,35 +60,45 @@ impl QbeType {
             x => *x,
         }
     }
+    #[inline]
     pub(crate) fn is_word(&self) -> bool {
         *self == Self::Word
     }
+    #[inline]
     pub(crate) fn is_long(&self) -> bool {
         *self == Self::Long
     }
+    #[inline]
     pub(crate) fn is_single(&self) -> bool {
         *self == Self::Single
     }
+    #[inline]
     pub(crate) fn is_double(&self) -> bool {
         *self == Self::Double
     }
+    #[inline]
     pub(crate) fn is_any(&self) -> bool {
         true
     }
+    #[inline]
     pub fn is_integer(&self) -> bool {
         !matches!(self, Self::Single | Self::Double | Self::UserDefined(_))
     }
+    #[inline]
     pub fn is_numeric(&self) -> bool {
         !matches!(self, Self::UserDefined(_))
     }
+    #[inline]
     pub fn is_floating(&self) -> bool {
         matches!(self, Self::Single | Self::Double)
     }
+    #[inline]
     pub fn is_pointer(&self) -> bool {
         matches!(self, Self::Long | Self::UserDefined(_))
     }
 }
 impl<W: Write> QbeCodegen<W> for QbeType {
+    #[inline]
     fn gen(&self, d: &mut W) -> fmt::Result {
         match self {
             Self::Word => d.write_str("w"),
@@ -110,6 +124,7 @@ pub enum QbeData<'a> {
     OffsetNamed(&'a str, u64),
 }
 impl<W: Write> QbeCodegen<W> for QbeData<'_> {
+    #[inline]
     fn gen(&self, d: &mut W) -> fmt::Result {
         match self {
             Self::String(s) => write!(d, "\"{}\"", s.escape_default()),
@@ -122,61 +137,73 @@ impl<W: Write> QbeCodegen<W> for QbeData<'_> {
     }
 }
 impl From<u8> for QbeData<'_> {
+    #[inline]
     fn from(item: u8) -> Self {
         Self::Constant(QbeType::Byte, item as u64)
     }
 }
 impl From<u16> for QbeData<'_> {
+    #[inline]
     fn from(item: u16) -> Self {
         Self::Constant(QbeType::Half, item as u64)
     }
 }
 impl From<u32> for QbeData<'_> {
+    #[inline]
     fn from(item: u32) -> Self {
         Self::Constant(QbeType::Word, item as u64)
     }
 }
 impl From<u64> for QbeData<'_> {
+    #[inline]
     fn from(item: u64) -> Self {
         Self::Constant(QbeType::Long, item)
     }
 }
 impl From<i8> for QbeData<'_> {
+    #[inline]
     fn from(item: i8) -> Self {
         Self::Constant(QbeType::Byte, item as u64)
     }
 }
 impl From<i16> for QbeData<'_> {
+    #[inline]
     fn from(item: i16) -> Self {
         Self::Constant(QbeType::Half, item as u64)
     }
 }
 impl From<i32> for QbeData<'_> {
+    #[inline]
     fn from(item: i32) -> Self {
         Self::Constant(QbeType::Word, item as u64)
     }
 }
 impl From<i64> for QbeData<'_> {
+    #[inline]
     fn from(item: i64) -> Self {
         Self::Constant(QbeType::Long, item as u64)
     }
 }
 impl From<f32> for QbeData<'_> {
+    #[inline]
     fn from(item: f32) -> Self {
         Self::Constant(QbeType::Word, item.to_bits() as u64)
     }
 }
 impl From<f64> for QbeData<'_> {
+    #[inline]
     fn from(item: f64) -> Self {
         Self::Constant(QbeType::Long, item.to_bits())
     }
 }
 impl<'a> From<&'a str> for QbeData<'a> {
+    #[inline]
     fn from(item: &'a str) -> Self {
         Self::String(item)
     }
 }
 impl<'a> From<QbeValue<'a>> for QbeData<'a> {
+    #[inline]
     fn from(item: QbeValue<'a>) -> Self {
         match item {
             QbeValue::Global(id) => Self::Global(id),
@@ -186,6 +213,7 @@ impl<'a> From<QbeValue<'a>> for QbeData<'a> {
     }
 }
 impl From<&QbeForwardDecl> for QbeData<'_> {
+    #[inline]
     fn from(item: &QbeForwardDecl) -> Self {
         Self::Global(item.0)
     }
@@ -197,6 +225,7 @@ impl From<&QbeForwardDecl> for QbeData<'_> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct QbeLabel(pub(crate) u32);
 impl<W: Write> QbeCodegen<W> for QbeLabel {
+    #[inline]
     fn gen(&self, d: &mut W) -> fmt::Result {
         write!(d, "@_{}", self.0)
     }
@@ -214,6 +243,7 @@ pub enum QbeValue<'a> {
     ThreadLocalNamed(&'a str),
 }
 impl<'a> QbeValue<'a> {
+    #[inline]
     pub fn type_of(&self) -> QbeType {
         match self {
             Self::Global(_) => QbeType::Long,
@@ -251,6 +281,7 @@ impl<'a> QbeValue<'a> {
     }
 }
 impl<W: Write> QbeCodegen<W> for QbeValue<'_> {
+    #[inline]
     fn gen(&self, d: &mut W) -> fmt::Result {
         match self {
             Self::Global(id) => write!(d, "$_{}", id),
@@ -262,55 +293,65 @@ impl<W: Write> QbeCodegen<W> for QbeValue<'_> {
     }
 }
 impl From<u8> for QbeValue<'_> {
+    #[inline]
     fn from(item: u8) -> Self {
         // automatic promotion from byte to word
         Self::Constant(QbeType::Word, item as u64)
     }
 }
 impl From<u16> for QbeValue<'_> {
+    #[inline]
     fn from(item: u16) -> Self {
         // automatic promotion from half to word
         Self::Constant(QbeType::Word, item as u64)
     }
 }
 impl From<u32> for QbeValue<'_> {
+    #[inline]
     fn from(item: u32) -> Self {
         Self::Constant(QbeType::Word, item as u64)
     }
 }
 impl From<u64> for QbeValue<'_> {
+    #[inline]
     fn from(item: u64) -> Self {
         Self::Constant(QbeType::Long, item)
     }
 }
 impl From<i8> for QbeValue<'_> {
+    #[inline]
     fn from(item: i8) -> Self {
         // automatic promotion from byte to word
         Self::Constant(QbeType::Word, item as u64)
     }
 }
 impl From<i16> for QbeValue<'_> {
+    #[inline]
     fn from(item: i16) -> Self {
         // automatic promotion from half to word
         Self::Constant(QbeType::Word, item as u64)
     }
 }
 impl From<i32> for QbeValue<'_> {
+    #[inline]
     fn from(item: i32) -> Self {
         Self::Constant(QbeType::Word, item as u64)
     }
 }
 impl From<i64> for QbeValue<'_> {
+    #[inline]
     fn from(item: i64) -> Self {
         Self::Constant(QbeType::Long, item as u64)
     }
 }
 impl From<f32> for QbeValue<'_> {
+    #[inline]
     fn from(item: f32) -> Self {
         Self::Constant(QbeType::Single, item.to_bits() as u64)
     }
 }
 impl From<f64> for QbeValue<'_> {
+    #[inline]
     fn from(item: f64) -> Self {
         Self::Constant(QbeType::Double, item.to_bits())
     }
@@ -321,6 +362,7 @@ impl<'a> From<&'a str> for QbeValue<'a> {
     }
 }
 impl<'a, Out: QbeFunctionOutput<'a>> From<&QbeFunction<'a, Out>> for QbeValue<'a> {
+    #[inline]
     fn from(item: &QbeFunction<'a, Out>) -> Self {
         match item.inner {
             QbeFunctionInner::Global(id) => Self::Global(id),
@@ -329,6 +371,7 @@ impl<'a, Out: QbeFunctionOutput<'a>> From<&QbeFunction<'a, Out>> for QbeValue<'a
     }
 }
 impl<'a, Out: QbeFunctionOutput<'a>> From<&QbeVariadicFunction<'a, Out>> for QbeValue<'a> {
+    #[inline]
     fn from(item: &QbeVariadicFunction<'a, Out>) -> Self {
         match item.inner {
             QbeFunctionInner::Global(id) => Self::Global(id),
@@ -343,6 +386,7 @@ impl<'a, Out: QbeFunctionOutput<'a>> From<&QbeVariadicFunction<'a, Out>> for Qbe
 #[derive(Debug, PartialEq, Eq)]
 pub struct QbeForwardDecl(pub(crate) u32);
 impl From<&QbeForwardDecl> for QbeValue<'_> {
+    #[inline]
     fn from(item: &QbeForwardDecl) -> Self {
         Self::Global(item.0)
     }
@@ -351,6 +395,7 @@ impl From<&QbeForwardDecl> for QbeValue<'_> {
 #[derive(Debug, PartialEq, Eq)]
 pub struct QbeForwardLabel(pub(crate) u32);
 impl From<&QbeForwardLabel> for QbeLabel {
+    #[inline]
     fn from(item: &QbeForwardLabel) -> Self {
         QbeLabel(item.0)
     }
@@ -362,6 +407,7 @@ pub(crate) enum QbeFunctionInner<'a> {
     Named(&'a str),
 }
 impl<'a, W: Write> QbeCodegen<W> for QbeFunctionInner<'a> {
+    #[inline]
     fn gen(&self, dest: &mut W) -> fmt::Result {
         match self {
             Self::Global(id) => write!(dest, "$_{}", id),
@@ -467,6 +513,7 @@ pub trait QbeFunctionOutput<'a>: Sized + Copy {
 }
 impl<'a> QbeFunctionOutput<'a> for () {
     type UserData = ();
+    #[inline]
     fn prep_call<CallerOut, const V: bool>(
         _caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
         _: &(),
@@ -476,6 +523,7 @@ impl<'a> QbeFunctionOutput<'a> for () {
     {
         Ok(())
     }
+    #[inline]
     fn finish_call<CallerOut, const V: bool>(
         _caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
         _: &(),
@@ -485,14 +533,17 @@ impl<'a> QbeFunctionOutput<'a> for () {
     {
         Ok(())
     }
+    #[inline]
     fn prep_func(&self, compiled: &mut String) -> Result<()> {
         compiled.write_str("function ")?;
         Ok(())
     }
+    #[inline]
     fn func_return<const V: bool>(&self, func: &mut QbeFunctionBuilder<'a, Self, V>) -> Result<()> {
         func.compiled.write_str("\tret\n")?;
         Ok(())
     }
+    #[inline]
     fn get_ud(&self) {}
 }
 impl<'a> QbeFunctionOutput<'a> for QbeValue<'a> {
@@ -534,6 +585,7 @@ impl<'a> QbeFunctionOutput<'a> for QbeValue<'a> {
         func.compiled.write_char('\n')?;
         Ok(())
     }
+    #[inline]
     fn get_ud(&self) -> QbeType {
         self.type_of().promote()
     }

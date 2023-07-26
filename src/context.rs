@@ -33,12 +33,23 @@ struct QbeContextInner {
     names: Vec<Pin<Box<str>>>,
 }
 
+// `UnsafeCell` to avoid complications where `QbeValue`s and similarly created
+// objects, because they can't outlive the context (due to `&str` pointers to
+// `names`), keep mutable references; lifetimes without borrowing (just some
+// mechanism where a function taking `&mut self` can return something that can't
+// outlive `self` without needing to hold the mutable reference to `self`)
+// would, as best I can tell, be required to solve this little problem.
+// Because `UnsafeCell` isn't `Sync`, I think the safety for this holds; every
+// function takes `&self` and essentially just uses it as `&mut self`, but if no
+// two functions can both be operating on `self` at the same time, it may not be
+// an issue.
 #[derive(Default, Debug)]
 pub struct QbeContext(UnsafeCell<QbeContextInner>);
 
 impl QbeContext {
+    #[inline]
     pub fn new() -> Self {
-        QbeContext::default()
+        Self::default()
     }
 
     // global variable definitions
@@ -491,6 +502,7 @@ impl QbeContext {
         Ok(QbeVariadicFunction::<Out> { inner: name, ud })
     }
 
+    #[inline]
     pub fn forward_declare(&self) -> QbeForwardDecl {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let id = this.global_counter;
@@ -498,16 +510,19 @@ impl QbeContext {
         QbeForwardDecl(id)
     }
 
+    #[inline]
     pub fn compile(self) -> String {
         self.0.into_inner().compiled
     }
 
+    #[inline]
     pub fn write_assembly_to_file(self, file_name: &str) -> std::result::Result<(), errno::Errno> {
         let compiled = self.0.into_inner().compiled;
         let f = CFile::open(file_name, "w\0")?;
         write_assembly_to_file(&compiled, QbeTarget::default(), &f)?;
         Ok(())
     }
+    #[inline]
     pub fn write_target_assembly_to_file(
         self,
         file_name: &str,
@@ -518,10 +533,12 @@ impl QbeContext {
         write_assembly_to_file(&compiled, target, &f)?;
         Ok(())
     }
+    #[inline]
     pub fn to_assembly(self) -> std::result::Result<String, errno::Errno> {
         let compiled = self.0.into_inner().compiled;
         write_assembly_to_string(&compiled, QbeTarget::default())
     }
+    #[inline]
     pub fn to_target_assembly(
         self,
         target: QbeTarget,
