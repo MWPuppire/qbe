@@ -112,7 +112,7 @@ impl QbeContext {
             Ok(QbeValue::Global(id))
         }
     }
-    pub fn global_at_ext<'a, T: Into<QbeData<'a>>>(
+    pub fn global_ext_at<'a, T: Into<QbeData<'a>>>(
         &self,
         at: QbeForwardDecl,
         val: T,
@@ -192,7 +192,7 @@ impl QbeContext {
             Ok(QbeValue::Global(id))
         }
     }
-    pub fn global_zeroed_at_ext(
+    pub fn global_zeroed_ext_at(
         &self,
         at: QbeForwardDecl,
         size: u64,
