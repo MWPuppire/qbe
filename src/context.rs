@@ -511,16 +511,16 @@ impl QbeContext {
     }
 
     #[inline]
-    pub fn compile(self) -> String {
+    pub fn to_ir(self) -> String {
         self.0.into_inner().compiled
     }
 
+    #[cfg(all(not(windows), any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64gc")))]
     #[inline]
     pub fn write_assembly_to_file(self, file_name: &str) -> std::result::Result<(), errno::Errno> {
         let compiled = self.0.into_inner().compiled;
-        let f = CFile::open(file_name, "w\0")?;
-        write_assembly_to_file(&compiled, QbeTarget::default(), &f)?;
-        Ok(())
+        let f = CFile::open(file_name, b"w\0")?;
+        write_assembly_to_file(&compiled, QbeTarget::default(), &f)
     }
     #[inline]
     pub fn write_target_assembly_to_file(
@@ -529,10 +529,10 @@ impl QbeContext {
         target: QbeTarget,
     ) -> std::result::Result<(), errno::Errno> {
         let compiled = self.0.into_inner().compiled;
-        let f = CFile::open(file_name, "w\0")?;
-        write_assembly_to_file(&compiled, target, &f)?;
-        Ok(())
+        let f = CFile::open(file_name, b"w\0")?;
+        write_assembly_to_file(&compiled, target, &f)
     }
+    #[cfg(all(not(windows), any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64gc")))]
     #[inline]
     pub fn to_assembly(self) -> std::result::Result<String, errno::Errno> {
         let compiled = self.0.into_inner().compiled;

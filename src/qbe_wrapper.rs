@@ -21,7 +21,8 @@ static mut OUTF: Mutex<*mut FILE> = Mutex::new(std::ptr::null_mut());
 
 pub(crate) struct CFile(pub(crate) NonNull<FILE>);
 impl CFile {
-    pub(crate) fn open(name: &str, mode: &str) -> Result<Self, Errno> {
+    // `mode` must be a valid mode string, and must end in a null-terminator
+    pub(crate) fn open(name: &str, mode: &[u8]) -> Result<Self, Errno> {
         unsafe {
             let name = CString::new(name).expect("File names shouldn't contain a NULL");
             let file = fopen(
@@ -121,6 +122,8 @@ extern "C" fn data(d: *mut Dat) {
         let file = OUTF.get_mut().unwrap();
         emitdat(d, *file);
         if ((*d).type_ == Dat_DEnd) {
+            // no good way to handle errors from within `data`, since QBE calls
+            // it and doesn't have any return type
             fputs("\n\0".as_ptr() as *const c_char, *file);
             freeall();
         }
@@ -176,6 +179,7 @@ extern "C" fn func(f: *mut Fn) {
             }
         }
         (T.emitfn.unwrap())(f, *file);
+        // no error handling, as mentioned in `data`
         fputs("\n\0".as_ptr() as *const c_char, *file);
         freeall();
     }
@@ -228,10 +232,22 @@ pub(crate) fn write_assembly_to_string(code: &str, target: QbeTarget) -> Result<
         let s_ptr = s.as_mut_ptr();
         let read = fread(s_ptr as *mut c_void, 1, out_len as u64, *file);
         if read < out_len as u64 {
+            // drop the `String` to avoid leaking memory
+            let _ = ManuallyDrop::into_inner(s);
+            return Err(errno());
+        }
+        // I'm conflicted about how to handle this. On the one hand, this is
+        // definitely an error, and returning `Ok` would leave no way to detect
+        // or handle the error; but on the other hand, the string is correct by
+        // this point, failure to release file handles isn't typically a
+        // significant problem, and `fclose` isn't always checked for errors
+        // anyway in my code (see, e.g., `CFile::drop`).
+        if fclose(*file) != 0 {
+            // drop the `String` to avoid leaking memory
+            let _ = ManuallyDrop::into_inner(s);
             return Err(errno());
         }
         let cap = s.capacity();
-        fclose(*file);
         Ok(String::from_raw_parts(s_ptr, out_len, cap))
     }
 }
@@ -244,6 +260,13 @@ extern "C" {
     static T_rv64: Target;
 }
 
+/// An enumeration of QBE target architectures and platforms. These can be
+/// passed to functions that compile QBE IR to assembly to specify what assembly
+/// should be generated. `Default` is implemented for `QbeTarget` if the target
+/// is one that QBE supports; otherwise, `Default` isn't implemented and the
+/// short-hand functions that compile to the default architecture aren't
+/// provided.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum QbeTarget {
     Amd64,
     Amd64Apple,
@@ -265,6 +288,7 @@ impl QbeTarget {
         }
     }
 }
+#[cfg(all(not(windows), any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64gc")))]
 impl Default for QbeTarget {
     #[inline]
     fn default() -> Self {
@@ -279,8 +303,6 @@ impl Default for QbeTarget {
                 Self::Arm64
             } else if #[cfg(target_arch = "riscv64gc")] {
                 Self::RiscV64
-            } else {
-                Self::Amd64Sysv // Idk, seems like a reasonable default
             }
         }
     }
