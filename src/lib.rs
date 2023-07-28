@@ -26,22 +26,47 @@ use qbe_wrapper::{write_assembly_to_file, write_assembly_to_string, CFile};
 /// The type for errors which may occur while building QBE programs.
 #[derive(Debug, Error)]
 pub enum QbeError {
+    /// Wrapper over [`std::fmt::Error`], which may result when generating QBE
+    /// code from expressions.
     #[error("unknown error while compiling")]
     CompileError(#[from] std::fmt::Error),
+    /// Error used when a function was provided a value of an incorrect type;
+    /// expected types are provided in the parameter.
     #[error("expected {0} parameter")]
     IncorrectType(&'static str),
+    /// Error used when a function requests an argument beyond those which were
+    /// specified in it.
     #[error("argument out of bounds")]
     ArgumentOutOfBounds,
+    /// Error used when a forward declaration, upon initializes, specifies an
+    /// export name.
     #[error("cannot use `export_as` with a forward declaration")]
     ForwardDeclareName,
+    /// Error used when an operation is used between two types that have no
+    /// common type that can be found. Either one of the types should be
+    /// changed, or a different operation that allows specifying an output type
+    /// should be used.
     #[error("cannot infer a common type")]
     CannotInferType,
+    /// Error used when [`reassign`][QbeFunctionBuilder::reassign] is used with
+    /// a non-local variable.
     #[error("cannot reassign to anything other than a local variable")]
     NonLocalRedefinition,
+    /// Error used when [`reassign`][QbeFunctionBuilder::reassign] is given an
+    /// unexpected function body. [`reassign`][QbeFunctionBuilder::reassign]
+    /// should only be used with a single expression returning a local value;
+    /// the code has no way to guarantee only a single expression is used, but a
+    /// non-local value being returned results in this error being raised.
     #[error("reassignment must use only a single expression returning a local")]
     ReassignmentSingleExpr,
+    /// Error used when a user-defined type is provided into a context that
+    /// expects only a basic primitive type. Often, this means that the user-
+    /// defined type should be passed in as a pointer instead of plainly.
     #[error("cannot use a user-defined type in that context")]
     NotBasic,
+    /// Error used when a function has multiple return values (e.g., from
+    /// [`early_return`][QbeFunctionBuilder::early_return]) and the returned
+    /// values have different types.
     #[error("returns in a function disagree on return type")]
     DisagreeingReturns,
 }
@@ -91,7 +116,7 @@ impl Default for QbeTarget {
 }
 
 /// Compile QBE IR from a string to assembly for the current platform. Short for
-/// `ir_to_target_assembly(ir, QbeTarget::default())`.
+/// [`ir_to_target_assembly(ir, QbeTarget::default())`][ir_to_target_assembly].
 #[cfg(all(
     not(windows),
     any(
@@ -105,10 +130,10 @@ impl Default for QbeTarget {
 pub fn ir_to_assembly(ir: &str) -> std::result::Result<String, errno::Errno> {
     write_assembly_to_string(ir, QbeTarget::default())
 }
-/// Compile QBE IR from a string to assembly for `target`. Note that this
-/// function, due to how QBE's API works, involves writing to a temporary file;
-/// if your end goal is to have assembly in a file, `ir_to_target_assembly_file`
-/// will most likely be faster.
+/// Compile QBE IR from a string to assembly for `target`. Note that, due to how
+/// QBE works, this function involves writing to and reading from a temporary
+/// file; if your end goal is to have assembly in a file rather than a string,
+/// [`ir_to_target_assembly_file`] will most likely be faster.
 #[cfg(feature = "qbe-compile")]
 #[inline]
 pub fn ir_to_target_assembly(
@@ -118,7 +143,7 @@ pub fn ir_to_target_assembly(
     write_assembly_to_string(ir, target)
 }
 /// Compile QBE IR from a string and write it to assembly file `file_name`.
-/// Short for `ir_to_target_assembly_file(ir, file_name, QbeTarget::default())`.
+/// Equivalent to [`ir_to_target_assembly_file(ir, file_name, QbeTarget::default())`][ir_to_target_assembly_file].
 #[cfg(all(
     not(windows),
     any(
