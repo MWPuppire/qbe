@@ -1,7 +1,8 @@
 use crate::value::{QbeCodegen, QbeForwardLabel, QbeFunctionOutput, QbeLabel, QbeType, QbeValue};
-use crate::{QbeContext, QbeError, Result};
+use crate::{QbeError, Result};
 use paste::paste;
 use std::fmt::Write;
+use std::pin::Pin;
 
 pub const NON_VARIADIC_FUNC: bool = false;
 pub const VARIADIC_FUNC: bool = true;
@@ -205,12 +206,12 @@ pub struct QbeFunctionBuilder<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bo
     block_counter: u32,
     pub(crate) compiled: String,
     returned: Vec<Out::UserData>,
-    ctx: &'a QbeContext,
+    names: &'a mut Vec<Pin<Box<str>>>,
 }
 impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a, Out, VARIADIC> {
     pub(crate) fn new(
         params: &'a [QbeType],
-        ctx: &'a QbeContext,
+        names: &'a mut Vec<Pin<Box<str>>>,
     ) -> QbeFunctionBuilder<'a, Out, VARIADIC> {
         QbeFunctionBuilder {
             params,
@@ -220,7 +221,7 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
             // @_0 is the start block
             compiled: String::from("@_0\n"),
             returned: vec![],
-            ctx,
+            names,
         }
     }
 
@@ -281,14 +282,19 @@ impl<'a, Out: QbeFunctionOutput<'a>, const VARIADIC: bool> QbeFunctionBuilder<'a
 
     #[inline]
     pub fn global_symbol(&mut self, sym: &str) -> QbeValue<'a> {
-        self.ctx.global_symbol(sym)
+        let s = Box::into_pin(Box::<str>::from(sym));
+        self.names.push(s);
+        // `transmute` to fix lifetime issue
+        QbeValue::Named(unsafe { std::mem::transmute(&*self.names[self.names.len() - 1]) })
     }
     #[inline]
     pub fn thread_local_symbol(&mut self, sym: &str) -> QbeValue<'a> {
-        let QbeValue::Named(name) = self.ctx.global_symbol(sym) else {
-            unreachable!()
-        };
-        QbeValue::ThreadLocalNamed(name)
+        let s = Box::into_pin(Box::<str>::from(sym));
+        self.names.push(s);
+        // `transmute` to fix lifetime issue
+        QbeValue::ThreadLocalNamed(unsafe {
+            std::mem::transmute(&*self.names[self.names.len() - 1])
+        })
     }
 
     #[inline]

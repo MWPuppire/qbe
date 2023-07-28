@@ -285,7 +285,7 @@ impl QbeContext {
         F: FnOnce(&mut QbeFunctionBuilder<'a, Out, VARIADIC>) -> Result<Out>,
     {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
-        let mut f = QbeFunctionBuilder::<Out, VARIADIC>::new(params, self);
+        let mut f = QbeFunctionBuilder::<Out, VARIADIC>::new(params, &mut this.names);
 
         let out = f.build(builder)?;
         out.prep_func(&mut this.compiled)?;
