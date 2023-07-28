@@ -3,8 +3,6 @@
 
 #[macro_use]
 extern crate thiserror;
-#[macro_use]
-extern crate derive_builder;
 extern crate cfg_if;
 #[cfg(feature = "qbe-compile")]
 extern crate errno;
@@ -18,7 +16,7 @@ mod func;
 mod qbe_wrapper;
 mod value;
 
-pub use context::{QbeContext, QbeDeclBuilder};
+pub use context::{QbeContext, QbeDecl};
 pub use func::*;
 pub use value::*;
 
