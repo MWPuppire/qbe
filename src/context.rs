@@ -37,31 +37,42 @@ pub struct QbeDecl<'a> {
 }
 
 impl<'a> QbeDecl<'a> {
-    pub fn section(self, sec: &'a str) -> Self {
+    /// Returns a copy of `self` where
+    /// [`self.section`][QbeDecl::section] is set to `sec`.
+    pub fn with_section(self, sec: &'a str) -> Self {
         QbeDecl {
             section: Some(sec),
             ..self
         }
     }
-    pub fn section_flags(self, flags: &'a str) -> Self {
+    /// Returns a copy of `self` where
+    /// [`self.section_flags`][QbeDecl::section_flags] is set to `flags`.
+    pub fn with_section_flags(self, flags: &'a str) -> Self {
         QbeDecl {
             section_flags: Some(flags),
             ..self
         }
     }
-    pub fn thread_local(self, thread_local: bool) -> Self {
+    /// Returns a copy of `self` where
+    /// [`self.thread_local`][QbeDecl::thread_local] is set to
+    /// `thread_local`.
+    pub fn with_thread_local(self, thread_local: bool) -> Self {
         QbeDecl {
             thread_local,
             ..self
         }
     }
-    pub fn align_to(self, alignment: u64) -> Self {
+    /// Returns a copy of `self` where
+    /// [`self.align_to`][QbeDecl::align_to] is set to `alignment`.
+    pub fn with_align_to(self, alignment: u64) -> Self {
         QbeDecl {
             align_to: Some(alignment),
             ..self
         }
     }
-    pub fn export_as(self, name: &'a str) -> Self {
+    /// Returns a copy of `self` where
+    /// [`self.export_as`][QbeDecl::export_as] is set to `name`.
+    pub fn with_export_as(self, name: &'a str) -> Self {
         QbeDecl {
             export_as: Some(name),
             ..self
@@ -173,10 +184,11 @@ impl QbeContext {
     /// consumes `at`, forward-declared variables can only be initialized once.
     ///
     /// Note that, due to current implementation, specifying
-    /// [`export_as`][QbeDecl::export_as] with a forward-declared variable is an
-    /// an error. If this is desired, use [`global_symbol`][Self::global_symbol]
-    /// with the exported name before initializing the variable, and initialize
-    /// the variable using the normal [`global_ext`][Self::global_ext] function.
+    /// [`export_as`][QbeDecl::export_as] with a forward-declared variable
+    /// is an error. If this is desired, use
+    /// [`global_symbol`][Self::global_symbol] with the exported name before
+    /// initializing the variable, and initialize the variable using the normal
+    /// [`global_ext`][Self::global_ext] function.
     pub fn global_ext_at<'a, T: Into<QbeData<'a>>>(
         &self,
         at: QbeForwardDecl,

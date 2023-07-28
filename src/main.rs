@@ -2,9 +2,9 @@ use qbe::*;
 
 fn main() {
     let ctx = QbeContext::new();
-    let a_opts = QbeDecl::default().export_as("a");
+    let a_opts = QbeDecl::default().with_export_as("a");
     let global_a = ctx.global_ext(0, &a_opts).unwrap();
-    let test_opts = QbeDecl::default().export_as("test");
+    let test_opts = QbeDecl::default().with_export_as("test");
     let test = ctx
         .function_ext(&[], &test_opts, |f| {
             let start = f.start();
@@ -26,7 +26,7 @@ fn main() {
             Ok(())
         })
         .unwrap();
-    let main_opts = QbeDecl::default().export_as("main");
+    let main_opts = QbeDecl::default().with_export_as("main");
     ctx.function_ext(&[], &main_opts, |f| {
         f.call(test, [] as [QbeValue; 0])?;
         let a = f.load(global_a, QbeType::Word)?;
