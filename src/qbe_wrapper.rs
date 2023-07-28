@@ -25,10 +25,7 @@ impl CFile {
     pub(crate) fn open(name: &str, mode: &[u8]) -> Result<Self, Errno> {
         unsafe {
             let name = CString::new(name).expect("File names shouldn't contain a NULL");
-            let file = fopen(
-                name.as_ptr(),
-                mode.as_ptr() as *const c_char,
-            );
+            let file = fopen(name.as_ptr(), mode.as_ptr() as *const c_char);
             if let Some(nonnull) = NonNull::new(file) {
                 Ok(CFile(nonnull))
             } else {
@@ -288,7 +285,14 @@ impl QbeTarget {
         }
     }
 }
-#[cfg(all(not(windows), any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64gc")))]
+#[cfg(all(
+    not(windows),
+    any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64gc"
+    )
+))]
 impl Default for QbeTarget {
     #[inline]
     fn default() -> Self {

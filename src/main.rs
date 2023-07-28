@@ -35,5 +35,5 @@ fn main() {
         Ok(out)
     })
     .unwrap();
-    println!("{}", ctx.to_target_assembly(QbeTarget::default()).unwrap());
+    println!("{}", ctx.to_assembly().unwrap());
 }

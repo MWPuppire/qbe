@@ -515,7 +515,14 @@ impl QbeContext {
         self.0.into_inner().compiled
     }
 
-    #[cfg(all(not(windows), any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64gc")))]
+    #[cfg(all(
+        not(windows),
+        any(
+            target_arch = "x86_64",
+            target_arch = "aarch64",
+            target_arch = "riscv64gc"
+        )
+    ))]
     #[inline]
     pub fn write_assembly_to_file(self, file_name: &str) -> std::result::Result<(), errno::Errno> {
         let compiled = self.0.into_inner().compiled;
@@ -532,7 +539,14 @@ impl QbeContext {
         let f = CFile::open(file_name, b"w\0")?;
         write_assembly_to_file(&compiled, target, &f)
     }
-    #[cfg(all(not(windows), any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64gc")))]
+    #[cfg(all(
+        not(windows),
+        any(
+            target_arch = "x86_64",
+            target_arch = "aarch64",
+            target_arch = "riscv64gc"
+        )
+    ))]
     #[inline]
     pub fn to_assembly(self) -> std::result::Result<String, errno::Errno> {
         let compiled = self.0.into_inner().compiled;
