@@ -7,6 +7,7 @@
 
 include!(concat!(env!("OUT_DIR"), "/qbe-bindings.rs"));
 
+use crate::QbeTarget;
 use errno::{errno, Errno};
 use libc::*;
 use std::ffi::CString;
@@ -194,7 +195,7 @@ pub(crate) fn write_assembly_to_file(
         *file = dest.file();
 
         DEBUG.fill(0);
-        TARGET = MaybeUninit::new(target.target());
+        TARGET = MaybeUninit::new(target.into());
 
         let infile = CFile::read_from_buffer(code.as_bytes())?;
         parse(
@@ -215,7 +216,7 @@ pub(crate) fn write_assembly_to_string(code: &str, target: QbeTarget) -> Result<
         *file = temp.file();
 
         DEBUG.fill(0);
-        TARGET = MaybeUninit::new(target.target());
+        TARGET = MaybeUninit::new(target.into());
 
         let infile = CFile::read_from_buffer(code.as_bytes())?;
         parse(
@@ -259,56 +260,16 @@ extern "C" {
     static T_rv64: Target;
 }
 
-/// An enumeration of QBE target architectures and platforms. These can be
-/// passed to functions that compile QBE IR to assembly to specify what assembly
-/// should be generated. `Default` is implemented for `QbeTarget` if the target
-/// is one that QBE supports; otherwise, `Default` isn't implemented and the
-/// short-hand functions that compile to the default architecture aren't
-/// provided.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum QbeTarget {
-    Amd64,
-    Amd64Apple,
-    Arm64,
-    Arm64Apple,
-    RiscV64,
-}
-impl QbeTarget {
+impl From<QbeTarget> for Target {
     #[inline]
-    fn target(&self) -> Target {
+    fn from(item: QbeTarget) -> Target {
         unsafe {
-            match self {
-                Self::Amd64 => T_amd64_sysv,
-                Self::Amd64Apple => T_amd64_apple,
-                Self::Arm64 => T_arm64,
-                Self::Arm64Apple => T_arm64_apple,
-                Self::RiscV64 => T_rv64,
-            }
-        }
-    }
-}
-#[cfg(all(
-    not(windows),
-    any(
-        target_arch = "x86_64",
-        target_arch = "aarch64",
-        target_arch = "riscv64gc"
-    )
-))]
-impl Default for QbeTarget {
-    #[inline]
-    fn default() -> Self {
-        cfg_if::cfg_if! {
-            if #[cfg(all(target_arch = "x86_64", any(target_os = "macos", target_os = "ios")))] {
-                Self::Amd64Apple
-            } else if #[cfg(target_arch = "x86_64")] {
-                Self::Amd64Sysv
-            } else if #[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "ios")))] {
-                Self::Arm64Apple
-            } else if #[cfg(target_arch = "aarch64")] {
-                Self::Arm64
-            } else if #[cfg(target_arch = "riscv64gc")] {
-                Self::RiscV64
+            match item {
+                QbeTarget::Amd64 => T_amd64_sysv,
+                QbeTarget::Amd64Apple => T_amd64_apple,
+                QbeTarget::Arm64 => T_arm64,
+                QbeTarget::Arm64Apple => T_arm64_apple,
+                QbeTarget::RiscV64 => T_rv64,
             }
         }
     }

@@ -35,5 +35,11 @@ fn main() {
         Ok(out)
     })
     .unwrap();
+    #[cfg(feature = "qbe-compile")]
     println!("{}", ctx.to_assembly().unwrap());
+    #[cfg(not(feature = "qbe-compile"))]
+    {
+        eprintln!("Cannot create assembly with this build; emitting QBE IR instead");
+        println!("{}", ctx.to_ir());
+    }
 }

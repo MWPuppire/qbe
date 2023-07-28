@@ -1,10 +1,14 @@
 use crate::func::{
     QbeFunctionBuilder, QbeFunctionCall, QbeVariadicFunctionCall, NON_VARIADIC_FUNC, VARIADIC_FUNC,
 };
-use crate::qbe_wrapper::{write_assembly_to_file, write_assembly_to_string, CFile, QbeTarget};
 use crate::value::{
     QbeCodegen, QbeData, QbeForwardDecl, QbeFunction, QbeFunctionInner, QbeFunctionOutput, QbeType,
     QbeValue, QbeVariadicFunction,
+};
+#[cfg(feature = "qbe-compile")]
+use crate::{
+    qbe_wrapper::{write_assembly_to_file, write_assembly_to_string, CFile},
+    QbeTarget,
 };
 use crate::{QbeError, Result};
 use std::cell::UnsafeCell;
@@ -521,7 +525,8 @@ impl QbeContext {
             target_arch = "x86_64",
             target_arch = "aarch64",
             target_arch = "riscv64gc"
-        )
+        ),
+        feature = "qbe-compile"
     ))]
     #[inline]
     pub fn write_assembly_to_file(self, file_name: &str) -> std::result::Result<(), errno::Errno> {
@@ -529,6 +534,7 @@ impl QbeContext {
         let f = CFile::open(file_name, b"w\0")?;
         write_assembly_to_file(&compiled, QbeTarget::default(), &f)
     }
+    #[cfg(feature = "qbe-compile")]
     #[inline]
     pub fn write_target_assembly_to_file(
         self,
@@ -545,13 +551,15 @@ impl QbeContext {
             target_arch = "x86_64",
             target_arch = "aarch64",
             target_arch = "riscv64gc"
-        )
+        ),
+        feature = "qbe-compile"
     ))]
     #[inline]
     pub fn to_assembly(self) -> std::result::Result<String, errno::Errno> {
         let compiled = self.0.into_inner().compiled;
         write_assembly_to_string(&compiled, QbeTarget::default())
     }
+    #[cfg(feature = "qbe-compile")]
     #[inline]
     pub fn to_target_assembly(
         self,

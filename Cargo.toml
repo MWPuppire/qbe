@@ -10,10 +10,14 @@ derive_builder = "0.12"
 thiserror = "1.0"
 paste = "1.0"
 cfg-if = "1.0"
-libc = "0.2"
-errno = "0.3"
+libc = { version = "0.2", optional = true }
+errno = { version = "0.3", optional = true }
+
+[features]
+default = ["qbe-compile"]
+qbe-compile = ["libc", "errno", "glob", "cc", "bindgen"]
 
 [build-dependencies]
-glob = "0.3"
-cc = "1.0"
-bindgen = "0.65"
+glob = { version = "0.3", optional = true }
+cc = { version = "1.0", optional = true }
+bindgen = { version = "0.65", optional = true }

@@ -1,23 +1,15 @@
-extern crate bindgen;
-extern crate cc;
-extern crate glob;
-
-use glob::glob;
-use std::env;
-use std::ffi::OsStr;
-use std::path::PathBuf;
-
+#[cfg(feature = "qbe-compile")]
 fn main() {
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let qbe_path = format!("{}/qbe", env::var("CARGO_MANIFEST_DIR").unwrap());
+    let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let qbe_path = format!("{}/qbe", std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let qbe_source_glob = format!("{}/*.c", qbe_path);
     let qbe_arch_glob = format!("{}/*64/*.c", qbe_path);
 
-    let qbe_sources = glob(&qbe_source_glob)
+    let qbe_sources = glob::glob(&qbe_source_glob)
         .unwrap()
         .filter_map(Result::ok)
-        .filter(|x| x.file_name() != Some(OsStr::new("main.c")));
-    let qbe_arch = glob(&qbe_arch_glob).unwrap().filter_map(Result::ok);
+        .filter(|x| x.file_name() != Some(std::ffi::OsStr::new("main.c")));
+    let qbe_arch = glob::glob(&qbe_arch_glob).unwrap().filter_map(Result::ok);
     cc::Build::new()
         .files(qbe_sources)
         .files(qbe_arch)
@@ -36,3 +28,5 @@ fn main() {
         .write_to_file(out_dir.join("qbe-bindings.rs"))
         .expect("Couldn't write bindings");
 }
+#[cfg(not(feature = "qbe-compile"))]
+fn main() {}
