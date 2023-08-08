@@ -6,6 +6,8 @@ pub(crate) trait QbeCodegen<Writer: Write> {
     fn gen(&self, dest: &mut Writer) -> fmt::Result;
 }
 
+/// An enumeration of QBE types. `UserDefined` types shouldn't be created
+/// manually, only by the library.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QbeType {
     Word,
@@ -114,6 +116,8 @@ impl<W: Write> QbeCodegen<W> for QbeType {
     }
 }
 
+/// Type for compile-time data constants. These can be assigned to variables
+/// that can later be used as QBE values via the `global` family of functions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QbeData<'a> {
     String(&'a str),
@@ -127,7 +131,7 @@ impl<W: Write> QbeCodegen<W> for QbeData<'_> {
     #[inline]
     fn gen(&self, d: &mut W) -> fmt::Result {
         match self {
-            Self::String(s) => write!(d, "\"{}\"", s.escape_default()),
+            Self::String(s) => write!(d, "b \"{}\"", s.escape_default()),
             Self::Global(id) => write!(d, "$_{}", id),
             Self::OffsetGlobal(id, offset) => write!(d, "$_{}+{}", id, offset),
             Self::Constant(typ, val) => write!(d, "{} {}", typ.basic_name(), val),
@@ -222,6 +226,7 @@ impl From<&QbeForwardDecl> for QbeData<'_> {
 // Note that it is a logical error (though not a compile- or runtime- error) to
 // use a `QbeLabel` or `QbeValue` with a `QbeContext`/`QbeFunctionBuilder` other
 // than the one that created it.
+/// Labels that may be used as jump targets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct QbeLabel(pub(crate) u32);
 impl<W: Write> QbeCodegen<W> for QbeLabel {
@@ -234,6 +239,8 @@ impl<W: Write> QbeCodegen<W> for QbeLabel {
 // Note that it is a logical error (though not a compile- or runtime- error) to
 // use a `QbeLabel` or `QbeValue` with a `QbeContext`/`QbeFunctionBuilder` other
 // than the one that created it.
+/// The type of run-time QBE values, such as those created by operations or
+/// external symbols used by the program.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QbeValue<'a> {
     Global(u32),
@@ -383,6 +390,11 @@ impl<'a, Out: QbeFunctionOutput<'a>> From<&QbeVariadicFunction<'a, Out>> for Qbe
 // for ease of design, a forward declaration cannot use `export_as`
 // if this is desired, use a global named symbol instead
 // doesn't derive `Copy` or `Clone` to disallow redeclaring a symbol
+/// A forward declaration of a label. Can borrow to `QbeValue`, but is moved
+/// when creating a value from it to help prevent issues, though without
+/// [must move values](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/)
+/// in Rust, there's nothing preventing someone from creating a forward
+/// declaration and simply never declaring it.
 #[derive(Debug, PartialEq, Eq)]
 pub struct QbeForwardDecl(pub(crate) u32);
 impl From<&QbeForwardDecl> for QbeValue<'_> {
@@ -392,6 +404,11 @@ impl From<&QbeForwardDecl> for QbeValue<'_> {
     }
 }
 
+/// A forward declaration of a label. Can borrow to `QbeLabel`, but is moved
+/// when creating a label from it to help prevent issues, though without
+/// [must move values](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/)
+/// in Rust, there's nothing preventing someone from creating a forward
+/// declaration and simply never declaring it.
 #[derive(Debug, PartialEq, Eq)]
 pub struct QbeForwardLabel(pub(crate) u32);
 impl From<&QbeForwardLabel> for QbeLabel {
@@ -416,6 +433,7 @@ impl<'a, W: Write> QbeCodegen<W> for QbeFunctionInner<'a> {
     }
 }
 
+/// Type of normal (non-variadic) QBE functions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct QbeFunction<'a, Out: QbeFunctionOutput<'a>> {
     pub(crate) inner: QbeFunctionInner<'a>,
@@ -450,6 +468,7 @@ impl<'a, Out: QbeFunctionOutput<'a>> QbeFunctionCall<'a> for QbeFunction<'a, Out
     }
 }
 
+/// Type of variadic QBE functions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct QbeVariadicFunction<'a, Out: QbeFunctionOutput<'a>> {
     pub(crate) inner: QbeFunctionInner<'a>,
@@ -493,6 +512,11 @@ impl<'a, Out: QbeFunctionOutput<'a>> QbeVariadicFunctionCall<'a> for QbeVariadic
     }
 }
 
+/// A trait used for types which are valid function returns from QBE functions.
+/// Mainly an implementation detail used to let the Rust type system determine
+/// some mismatches in a function's return value; the function used to generate
+/// QBE functions must return a value of the same type everywhere, though the
+/// Rust compiler has no information into the QBE type of a QBE value.
 pub trait QbeFunctionOutput<'a>: Sized + Copy {
     type UserData: PartialEq + Copy;
     fn prep_call<CallerOut, const V: bool>(
@@ -588,5 +612,79 @@ impl<'a> QbeFunctionOutput<'a> for QbeValue<'a> {
     #[inline]
     fn get_ud(&self) -> QbeType {
         self.type_of().promote()
+    }
+}
+
+/// External functions declared from `extern_func`; similar to external symbols,
+/// but implements the `QbeFunctionCall` and `QbeVariadicFunctionCall` traits to
+/// be callable as a function.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QbeExternFunction<'a, Out: QbeFunctionOutput<'a>> {
+    pub(crate) name: &'a str,
+    pub(crate) ud: Out::UserData,
+}
+impl<'a, Out: QbeFunctionOutput<'a>> QbeFunctionCall<'a> for QbeExternFunction<'a, Out> {
+    type Output = Out;
+    fn call_on<CallerOut, I, A, const V: bool>(
+        &self,
+        caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
+        args: I
+    ) -> Result<Out>
+    where
+        CallerOut: QbeFunctionOutput<'a>,
+        I: IntoIterator<Item = A>,
+        A: Into<QbeValue<'a>>,
+    {
+        caller.compiled.write_char('\t')?;
+        Out::prep_call(caller, &self.ud)?;
+        caller.compiled.write_str("call $")?;
+        caller.compiled.write_str(self.name)?;
+        caller.compiled.write_char('(')?;
+        for arg in args {
+            let arg = arg.into();
+            arg.type_of().gen(&mut caller.compiled)?;
+            caller.compiled.write_char(' ')?;
+            arg.gen(&mut caller.compiled)?;
+            caller.compiled.write_str(", ")?;
+        }
+        caller.compiled.write_str(")\n")?;
+        Out::finish_call(caller, &self.ud)
+    }
+}
+impl<'a, Out: QbeFunctionOutput<'a>> QbeVariadicFunctionCall<'a> for QbeExternFunction<'a, Out> {
+    type Output = Out;
+    fn call_va_on<CallerOut, I, A, const V: bool>(
+        &self,
+        caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
+        args: I,
+        va_args: I,
+    ) -> Result<Out>
+    where
+        CallerOut: QbeFunctionOutput<'a>,
+        I: IntoIterator<Item = A>,
+        A: Into<QbeValue<'a>>,
+    {
+        caller.compiled.write_char('\t')?;
+        Out::prep_call(caller, &self.ud)?;
+        caller.compiled.write_str("call $")?;
+        caller.compiled.write_str(self.name)?;
+        caller.compiled.write_char('(')?;
+        for arg in args {
+            let arg = arg.into();
+            arg.type_of().gen(&mut caller.compiled)?;
+            caller.compiled.write_char(' ')?;
+            arg.gen(&mut caller.compiled)?;
+            caller.compiled.write_str(", ")?;
+        }
+        caller.compiled.write_str("..., ")?;
+        for arg in va_args {
+            let arg = arg.into();
+            arg.type_of().gen(&mut caller.compiled)?;
+            caller.compiled.write_char(' ')?;
+            arg.gen(&mut caller.compiled)?;
+            caller.compiled.write_str(", ")?;
+        }
+        caller.compiled.write_str(")\n")?;
+        Out::finish_call(caller, &self.ud)
     }
 }

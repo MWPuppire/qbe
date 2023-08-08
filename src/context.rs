@@ -3,7 +3,7 @@ use crate::func::{
 };
 use crate::value::{
     QbeCodegen, QbeData, QbeForwardDecl, QbeFunction, QbeFunctionInner, QbeFunctionOutput, QbeType,
-    QbeValue, QbeVariadicFunction,
+    QbeValue, QbeVariadicFunction, QbeExternFunction,
 };
 #[cfg(feature = "qbe-compile")]
 use crate::{
@@ -577,6 +577,16 @@ impl QbeContext {
         let name = QbeFunctionInner::Global(at.0);
         let ud = self.make_function(name, params, builder)?;
         Ok(QbeVariadicFunction::<Out> { inner: name, ud })
+    }
+
+    pub fn extern_func<'a, Out: QbeFunctionOutput<'a>>(&'a self, sym: &str, ud: Out::UserData) -> QbeExternFunction<'a, Out> {
+        let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
+        let s = Box::into_pin(Box::<str>::from(sym));
+        this.names.push(s);
+        QbeExternFunction {
+            name: &this.names[this.names.len() - 1],
+            ud,
+        }
     }
 
     #[inline]

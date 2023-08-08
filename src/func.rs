@@ -7,6 +7,7 @@ use std::pin::Pin;
 pub const NON_VARIADIC_FUNC: bool = false;
 pub const VARIADIC_FUNC: bool = true;
 
+/// Trait for QBE callable objects.
 pub trait QbeFunctionCall<'a> {
     type Output: QbeFunctionOutput<'a>;
     fn call_on<Out, I, A, const V: bool>(
@@ -20,6 +21,7 @@ pub trait QbeFunctionCall<'a> {
         A: Into<QbeValue<'a>>;
 }
 
+/// Trait for variadic QBE callable objects.
 pub trait QbeVariadicFunctionCall<'a> {
     type Output: QbeFunctionOutput<'a>;
     fn call_va_on<Out, I, A, const V: bool>(

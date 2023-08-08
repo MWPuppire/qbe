@@ -26,10 +26,13 @@ fn main() {
             Ok(())
         })
         .unwrap();
+    let printf = ctx.extern_func::<QbeValue>("printf", QbeType::Word);
+    let format_str = ctx.global("%d\n").unwrap();
     let main_opts = QbeDecl::default().with_export_as("main");
     ctx.function_ext(&[], &main_opts, |f| {
         f.call(test, [] as [QbeValue; 0])?;
         let a = f.load(global_a, QbeType::Word)?;
+        f.call_va(printf, [format_str], [a])?;
         let eq = f.eq(a, 55)?;
         let out = f.sub(1, eq)?;
         Ok(out)
