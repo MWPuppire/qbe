@@ -1,6 +1,8 @@
 //! A binding and wrapper for [QBE](https://c9x.me/compile) in Rust. Provides a
 //! class to create QBE IR easily and compile it to assembly when finished.
 
+#![warn(missing_docs)]
+
 #[macro_use]
 extern crate thiserror;
 extern crate cfg_if;
@@ -21,7 +23,7 @@ pub use func::*;
 pub use value::*;
 
 #[cfg(feature = "qbe-compile")]
-use qbe_wrapper::{write_assembly_to_file, write_assembly_to_string, CFile};
+use qbe_wrapper::{write_assembly_to_file, write_assembly_to_string, CFile, CFileMode};
 
 /// The type for errors which may occur while building QBE programs.
 #[derive(Debug, Error)]
@@ -82,10 +84,15 @@ pub type Result<T> = std::result::Result<T, QbeError>;
 /// provided.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum QbeTarget {
+    /// x86-64 SysV ABI
     Amd64,
+    /// x86-64 Apple ABI
     Amd64Apple,
+    /// AArch64 SysV ABI
     Arm64,
+    /// AArch64 Apple ABI
     Arm64Apple,
+    /// RISC-V SysV ABI
     RiscV64,
 }
 #[cfg(all(
@@ -155,7 +162,7 @@ pub fn ir_to_target_assembly(
 ))]
 #[inline]
 pub fn ir_to_assembly_file(ir: &str, file_name: &str) -> std::result::Result<(), errno::Errno> {
-    let f = CFile::open(file_name, b"w\0")?;
+    let f = CFile::open(file_name, CFileMode::Write)?;
     write_assembly_to_file(ir, QbeTarget::default(), &f)
 }
 /// Compile QBE IR from a string and write it to assembly file `file_name` for
@@ -167,6 +174,6 @@ pub fn ir_to_target_assembly_file(
     file_name: &str,
     target: QbeTarget,
 ) -> std::result::Result<(), errno::Errno> {
-    let f = CFile::open(file_name, b"w\0")?;
+    let f = CFile::open(file_name, CFileMode::Write)?;
     write_assembly_to_file(ir, target, &f)
 }

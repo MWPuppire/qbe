@@ -22,13 +22,35 @@ static mut DEBUG: [c_char; 91] = [0; 91];
 
 static mut OUTF: Mutex<*mut FILE> = Mutex::new(std::ptr::null_mut());
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) enum CFileMode {
+    Read,
+    Write,
+    AppendOnly,
+    ReadWrite,
+    RwNew,
+    ReadAppend,
+}
+impl CFileMode {
+    const fn to_str(self) -> *const c_char {
+        match self {
+            Self::Read => "r\0".as_ptr() as *const c_char,
+            Self::Write => "w\0".as_ptr() as *const c_char,
+            Self::AppendOnly => "a\0".as_ptr() as *const c_char,
+            Self::ReadWrite => "r+\0".as_ptr() as *const c_char,
+            Self::RwNew => "w+\0".as_ptr() as *const c_char,
+            Self::ReadAppend => "a+\0".as_ptr() as *const c_char,
+        }
+    }
+}
+
+#[derive(Eq, PartialEq)]
 pub(crate) struct CFile(pub(crate) NonNull<FILE>);
 impl CFile {
-    // `mode` must be a valid mode string, and must end in a null-terminator
-    pub(crate) fn open(name: &str, mode: &[u8]) -> Result<Self, Errno> {
+    pub fn open(name: &str, mode: CFileMode) -> Result<Self, Errno> {
         unsafe {
             let name = CString::new(name).expect("File names shouldn't contain a NULL");
-            let file = fopen(name.as_ptr(), mode.as_ptr() as *const c_char);
+            let file = fopen(name.as_ptr(), mode.to_str());
             if let Some(nonnull) = NonNull::new(file) {
                 Ok(CFile(nonnull))
             } else {
@@ -36,7 +58,8 @@ impl CFile {
             }
         }
     }
-    pub(crate) fn temporary() -> Result<Self, Errno> {
+
+    pub fn temporary() -> Result<Self, Errno> {
         unsafe {
             let file = tmpfile();
             if let Some(nonnull) = NonNull::new(file) {
@@ -46,13 +69,14 @@ impl CFile {
             }
         }
     }
+
     #[cfg(unix)]
-    pub(crate) fn read_from_buffer(buf: &[u8]) -> Result<Self, Errno> {
+    pub fn read_from_buffer(buf: &[u8]) -> Result<Self, Errno> {
         unsafe {
             let file = fmemopen(
                 buf.as_ptr() as *mut c_void,
                 buf.len() as size_t,
-                "r\0".as_ptr() as *const c_char,
+                CFileMode::Read.to_str(),
             );
             if let Some(nonnull) = NonNull::new(file) {
                 Ok(CFile(nonnull))
@@ -62,7 +86,7 @@ impl CFile {
         }
     }
     #[cfg(not(unix))]
-    pub(crate) fn read_from_buffer(buf: &[u8]) -> Result<Self, Errno> {
+    pub fn read_from_buffer(buf: &[u8]) -> Result<Self, Errno> {
         unsafe {
             let temp = Self::temporary()?;
             let written = fwrite(
@@ -82,10 +106,10 @@ impl CFile {
     }
 
     #[inline]
-    pub(crate) fn file(&self) -> *mut FILE {
+    pub fn file(&self) -> *mut FILE {
         self.0.as_ptr()
     }
-    pub(crate) fn len(&self) -> Result<usize, Errno> {
+    pub fn len(&self) -> Result<usize, Errno> {
         unsafe {
             let file = self.file();
             if fseek(file, 0, SEEK_END as c_int) != 0 {

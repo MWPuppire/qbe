@@ -2,12 +2,12 @@ use crate::func::{
     QbeFunctionBuilder, QbeFunctionCall, QbeVariadicFunctionCall, NON_VARIADIC_FUNC, VARIADIC_FUNC,
 };
 use crate::value::{
-    QbeCodegen, QbeData, QbeForwardDecl, QbeFunction, QbeFunctionInner, QbeFunctionOutput, QbeType,
-    QbeValue, QbeVariadicFunction, QbeExternFunction,
+    QbeCodegen, QbeData, QbeExternFunction, QbeForwardDecl, QbeFunction, QbeFunctionInner,
+    QbeFunctionOutput, QbeType, QbeValue, QbeVariadicFunction,
 };
 #[cfg(feature = "qbe-compile")]
 use crate::{
-    qbe_wrapper::{write_assembly_to_file, write_assembly_to_string, CFile},
+    qbe_wrapper::{write_assembly_to_file, write_assembly_to_string, CFile, CFileMode},
     QbeTarget,
 };
 use crate::{QbeError, Result};
@@ -579,7 +579,11 @@ impl QbeContext {
         Ok(QbeVariadicFunction::<Out> { inner: name, ud })
     }
 
-    pub fn extern_func<'a, Out: QbeFunctionOutput<'a>>(&'a self, sym: &str, ud: Out::UserData) -> QbeExternFunction<'a, Out> {
+    pub fn extern_func<'a, Out: QbeFunctionOutput<'a>>(
+        &'a self,
+        sym: &str,
+        ud: Out::UserData,
+    ) -> QbeExternFunction<'a, Out> {
         let this = unsafe { self.0.get().as_mut().unwrap_unchecked() };
         let s = Box::into_pin(Box::<str>::from(sym));
         this.names.push(s);
@@ -614,7 +618,7 @@ impl QbeContext {
     #[inline]
     pub fn write_assembly_to_file(self, file_name: &str) -> std::result::Result<(), errno::Errno> {
         let compiled = self.0.into_inner().compiled;
-        let f = CFile::open(file_name, b"w\0")?;
+        let f = CFile::open(file_name, CFileMode::Write)?;
         write_assembly_to_file(&compiled, QbeTarget::default(), &f)
     }
     #[cfg(feature = "qbe-compile")]
@@ -625,7 +629,7 @@ impl QbeContext {
         target: QbeTarget,
     ) -> std::result::Result<(), errno::Errno> {
         let compiled = self.0.into_inner().compiled;
-        let f = CFile::open(file_name, b"w\0")?;
+        let f = CFile::open(file_name, CFileMode::Write)?;
         write_assembly_to_file(&compiled, target, &f)
     }
     #[cfg(all(

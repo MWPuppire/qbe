@@ -10,14 +10,23 @@ pub(crate) trait QbeCodegen<Writer: Write> {
 /// manually, only by the library.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QbeType {
+    /// The `w` type in QBE, representing 32-bit integers.
     Word,
+    /// The `l` type in QBE, representing 64-bit integers.
     Long,
+    /// The `s` type in QBE, representing 32-bit floating-points.
     Single,
+    /// The `d` type in QBE, representing 64-bit floating-points.
     Double,
+    /// The `b` or `ub` type in QBE, representing 8-bit integers.
     Byte,
+    /// The `h` or `uh` type in QBE, representing 16-bit integers.
     Half,
+    /// The `sb` type in QBE, representing 8-bit signed integers.
     SignedByte,
+    /// The `sh` type in QBE, representing 16-bit signed integers.
     SignedHalf,
+    /// Any user-defined aggregate types created by the program.
     UserDefined(u32),
 }
 impl QbeType {
@@ -82,18 +91,25 @@ impl QbeType {
     pub(crate) fn is_any(&self) -> bool {
         true
     }
+
+    /// Tests if the type is a basic integer type (not floating-points or
+    /// aggregates).
     #[inline]
     pub fn is_integer(&self) -> bool {
         !matches!(self, Self::Single | Self::Double | Self::UserDefined(_))
     }
+    /// Tests if the type is any numeric type, including integers and floats
+    /// (basically tests for non-aggregate types).
     #[inline]
     pub fn is_numeric(&self) -> bool {
         !matches!(self, Self::UserDefined(_))
     }
+    /// Tests if the type is a floating-point type.
     #[inline]
     pub fn is_floating(&self) -> bool {
         matches!(self, Self::Single | Self::Double)
     }
+    /// Tests if the type could represent a pointer value.
     #[inline]
     pub fn is_pointer(&self) -> bool {
         matches!(self, Self::Long | Self::UserDefined(_))
@@ -120,11 +136,17 @@ impl<W: Write> QbeCodegen<W> for QbeType {
 /// that can later be used as QBE values via the `global` family of functions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QbeData<'a> {
+    /// Constant strings in the data.
     String(&'a str),
+    /// Anonymous global variables (which are represented by numeric ids).
     Global(u32),
+    /// Pointer offsets into anonymous global variables.
     OffsetGlobal(u32, u64),
+    /// Constant integer values.
     Constant(QbeType, u64),
+    /// Named global variables.
     Named(&'a str),
+    /// Pointers offsets into named global variables.
     OffsetNamed(&'a str, u64),
 }
 impl<W: Write> QbeCodegen<W> for QbeData<'_> {
@@ -223,10 +245,10 @@ impl From<&QbeForwardDecl> for QbeData<'_> {
     }
 }
 
-// Note that it is a logical error (though not a compile- or runtime- error) to
-// use a `QbeLabel` or `QbeValue` with a `QbeContext`/`QbeFunctionBuilder` other
-// than the one that created it.
-/// Labels that may be used as jump targets.
+/// Labels that may be used as jump targets. Note that it is a logical error
+/// (though not a compile- or runtime-error) to use a `QbeLabel` with a
+/// [`crate::QbeContext`] or [`crate::QbeFunctionBuilder`] other than the one
+/// that created it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct QbeLabel(pub(crate) u32);
 impl<W: Write> QbeCodegen<W> for QbeLabel {
@@ -236,11 +258,11 @@ impl<W: Write> QbeCodegen<W> for QbeLabel {
     }
 }
 
-// Note that it is a logical error (though not a compile- or runtime- error) to
-// use a `QbeLabel` or `QbeValue` with a `QbeContext`/`QbeFunctionBuilder` other
-// than the one that created it.
 /// The type of run-time QBE values, such as those created by operations or
-/// external symbols used by the program.
+/// external symbols used by the program. Note that it is a logical error
+/// (though not a compile- or runtime-error) to use a `QbeValue` with a
+/// [`crate::QbeContext`] or [`crate::QbeFunctionBuilder`] other than the one
+/// that created it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QbeValue<'a> {
     Global(u32),
@@ -250,6 +272,7 @@ pub enum QbeValue<'a> {
     ThreadLocalNamed(&'a str),
 }
 impl<'a> QbeValue<'a> {
+    /// Returns the type of the value.
     #[inline]
     pub fn type_of(&self) -> QbeType {
         match self {
@@ -260,6 +283,10 @@ impl<'a> QbeValue<'a> {
             Self::ThreadLocalNamed(_) => QbeType::Long,
         }
     }
+
+    /// Returns a common type, if able, between this and `with`. This is the
+    /// type the values will be cast to if binary operations are used between
+    /// these two values.
     pub fn common_type(&self, with: &'a QbeValue<'a>) -> Result<QbeType> {
         let typ = match self {
             Self::Global(_) => QbeType::Long,
@@ -628,7 +655,7 @@ impl<'a, Out: QbeFunctionOutput<'a>> QbeFunctionCall<'a> for QbeExternFunction<'
     fn call_on<CallerOut, I, A, const V: bool>(
         &self,
         caller: &mut QbeFunctionBuilder<'a, CallerOut, V>,
-        args: I
+        args: I,
     ) -> Result<Out>
     where
         CallerOut: QbeFunctionOutput<'a>,

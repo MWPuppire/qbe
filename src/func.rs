@@ -4,7 +4,11 @@ use paste::paste;
 use std::fmt::Write;
 use std::pin::Pin;
 
+/// Discriminant for non-variadic functions; used to allow/disallow certain
+/// methods in the function builder.
 pub const NON_VARIADIC_FUNC: bool = false;
+/// Discriminant for variadic functions; used to allow/disallow certain methods
+/// in the function builder.
 pub const VARIADIC_FUNC: bool = true;
 
 /// Trait for QBE callable objects.
@@ -39,6 +43,7 @@ pub trait QbeVariadicFunctionCall<'a> {
 macro_rules! unop {
     ($life:lifetime, $name:ident, $input:ident, $valid:ident, $outtype:expr) => {
         paste! {
+            #[doc = concat!("Compile the `", stringify!($name), "` QBE operation.")]
             pub fn $name<T: Into<QbeValue<$life>>>(&mut self, val: T) -> Result<QbeValue<$life>> {
                 let $input = val.into();
                 if !$input.type_of().[<is_ $valid>]() {
@@ -59,6 +64,7 @@ macro_rules! unop {
 
     ($life:lifetime, $name:ident, $input:ident, $valid:ident, $outtype:expr, $op_name:ident) => {
         paste! {
+            #[doc = concat!("Compile the `", stringify!($op_name), "` QBE operation.")]
             pub fn $name<T: Into<QbeValue<$life>>>(&mut self, val: T) -> Result<QbeValue<$life>> {
                 let $input = val.into();
                 if !$input.type_of().[<is_ $valid>]() {
@@ -81,6 +87,7 @@ macro_rules! unop {
 macro_rules! binop {
     ($life:lifetime, $name:ident, $in1:ident, $in2:ident, $valid:ident, $outtype:expr) => {
         paste! {
+            #[doc = concat!("Compile the `", stringify!($name), "` QBE operation.")]
             pub fn $name<X, Y>(&mut self, val1: X, val2: Y) -> Result<QbeValue<$life>>
             where X: Into<QbeValue<$life>>, Y: Into<QbeValue<$life>> {
                 let $in1 = val1.into();
@@ -108,6 +115,7 @@ macro_rules! binop {
 
     ($life:lifetime, $name:ident, $in1:ident, $in2:ident, $valid:ident, $outtype:expr, $op_name:ident) => {
         paste! {
+            #[doc = concat!("Compile the `", stringify!($op_name), "` QBE operation.")]
             pub fn $name<X, Y>(&mut self, val1: X, val2: Y) -> Result<QbeValue<$life>>
             where X: Into<QbeValue<$life>>, Y: Into<QbeValue<$life>> {
                 let $in1 = val1.into();
@@ -137,6 +145,7 @@ macro_rules! binop {
 macro_rules! cmp_op {
     ($life:lifetime, $name:ident, $valid:ident) => {
         paste! {
+            #[doc = concat!("Compile the `", stringify!($name), "` QBE operation.")]
             pub fn $name<X, Y>(&mut self, val1: X, val2: Y) -> Result<QbeValue<$life>>
             where X: Into<QbeValue<$life>>, Y: Into<QbeValue<$life>> {
                 let val1 = val1.into();
@@ -167,6 +176,7 @@ macro_rules! cmp_op {
                 self.local_counter += 1;
                 Ok(QbeValue::Temporary(QbeType::Long, id))
             }
+            #[doc = concat!("Compile the `", stringify!($name), "` QBE operation, but cast the result as a [`QbeType::Word`].")]
             pub fn [<$name _w>]<X, Y>(&mut self, val1: X, val2: Y) -> Result<QbeValue<$life>>
             where X: Into<QbeValue<$life>>, Y: Into<QbeValue<$life>> {
                 let val1 = val1.into();
